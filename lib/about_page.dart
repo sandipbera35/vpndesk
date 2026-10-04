@@ -93,6 +93,8 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                       _stagger(4, _section('Open-source technology', Icons.code_rounded, _violet, _tech())),
                       const SizedBox(height: 18),
                       _stagger(5, _section('Good to know', Icons.info_outline_rounded, _amber, _notes())),
+                      const SizedBox(height: 18),
+                      _stagger(6, _aiNote()),
                     ]),
                   ),
                 ),
@@ -291,6 +293,27 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
       ]);
     });
   }
+
+  Widget _aiNote() => _glass(
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: _violet.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(11)),
+            child: const Icon(Icons.auto_awesome_rounded, size: 18, color: _violet),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Built with AI assistance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              SizedBox(height: 6),
+              Text(
+                'This app was designed and directed by Sandip Bera and developed with the help of AI coding assistants: Claude Code (by Anthropic) and OpenCode. All code was reviewed and tested by the author.',
+                style: TextStyle(color: Colors.white60, height: 1.45, fontSize: 13.5),
+              ),
+            ]),
+          ),
+        ]),
+      );
 
   Widget _notes() => const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _Bullet('By default this is a local SOCKS5 proxy via Tor: apps that ignore the system proxy are not covered. Turn on System-wide mode (Linux) to cover every app; UDP such as QUIC and voice calls is then blocked, because Tor cannot carry it.'),

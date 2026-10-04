@@ -216,6 +216,12 @@ No accounts, no analytics, no telemetry.
 
 ---
 
+## 🤖 Built with AI assistance
+
+VPN Desk was designed and directed by **Sandip Bera** and developed with the help of AI coding assistants: **[Claude Code](https://claude.com/claude-code)** (by Anthropic) and **[OpenCode](https://opencode.ai)**. All code was reviewed and tested by the author.
+
+---
+
 ## 👤 Author
 
 <img src="assets/profile.jpg" width="96" align="left" style="border-radius:50%" alt="Sandip Bera">
