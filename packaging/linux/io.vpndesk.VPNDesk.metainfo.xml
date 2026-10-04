@@ -29,7 +29,6 @@
   <icon type="stock">vpn_desk</icon>
   <url type="homepage">https://github.com/sandipbera35/vpndesk</url>
   <url type="bugtracker">https://github.com/sandipbera35/vpndesk/issues</url>
-  <url type="vcs-browser">https://github.com/sandipbera35/vpndesk</url>
   <categories>
     <category>Network</category>
     <category>Security</category>
