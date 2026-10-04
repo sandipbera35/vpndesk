@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.vpndesk.VPNDesk</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>VPN Desk</name>
+  <summary>Browse through Tor from a country you choose</summary>
+  <developer id="in.sandipbera">
+    <name>Sandip Bera</name>
+  </developer>
+  <description>
+    <p>
+      VPN Desk starts a bundled Tor client with a strict exit relay in the country you pick, shows your real and
+      exit locations on a live map, and ranks countries by live speed estimates. No account and no subscription.
+    </p>
+    <ul>
+      <li>Choose a country exit, or turn on Auto to always use the fastest location</li>
+      <li>Switch location without ever exposing your real IP</li>
+      <li>Live world map with animated pins for your real and exit IP</li>
+      <li>Optional system-wide mode that sends all TCP and DNS traffic from every app through Tor (asks for administrator permission once)</li>
+      <li>Tor is bundled, so there is nothing else to install</li>
+    </ul>
+    <p>
+      By default it is a local SOCKS5 proxy, so only apps that honour the system proxy are covered. Tor is slower
+      than a commercial VPN and cannot carry UDP traffic.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.vpndesk.VPNDesk.desktop</launchable>
+  <icon type="stock">vpn_desk</icon>
+  <url type="homepage">https://github.com/sandipbera35/vpndesk</url>
+  <url type="bugtracker">https://github.com/sandipbera35/vpndesk/issues</url>
+  <url type="vcs-browser">https://github.com/sandipbera35/vpndesk</url>
+  <categories>
+    <category>Network</category>
+    <category>Security</category>
+  </categories>
+  <keywords>
+    <keyword>VPN</keyword>
+    <keyword>Tor</keyword>
+    <keyword>Proxy</keyword>
+    <keyword>Privacy</keyword>
+    <keyword>Anonymity</keyword>
+  </keywords>
+  <provides>
+    <binary>vpn_desk</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@">
+      <description>
+        <p>See the release notes on GitHub for what changed.</p>
+      </description>
+    </release>
+  </releases>
+</component>

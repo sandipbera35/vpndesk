@@ -30,7 +30,7 @@ jobs:
           git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$HOME/flutter"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm libevent-dev libssl-dev zlib1g-dev dpkg-dev
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm libevent-dev libssl-dev zlib1g-dev dpkg-dev appstream desktop-file-utils imagemagick
       - name: Build app
         run: flutter pub get && flutter build linux --release
       - name: Bundle tor and package

@@ -17,5 +17,6 @@ tar -xzf "$TMP/$NAME" -C "$TMP"
 mkdir -p "$DEST"
 cp -R "$TMP"/tor/. "$DEST"/
 cp "$TMP"/data/geoip "$TMP"/data/geoip6 "$DEST"/
+chmod -R u+rwX,go+rX,go-w "$DEST"
 chmod +x "$DEST"/tor 2>/dev/null || true
 echo "Tor $VER ($OS/$ARCH) -> $DEST"

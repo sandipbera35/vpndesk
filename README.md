@@ -53,7 +53,9 @@ sudo apt install ./vpn-desk_<version>_amd64.deb
 sudo dnf install ./vpn-desk-<version>-1.x86_64.rpm
 ```
 
-Always take the **latest** release. (`v1.0.1` packages installed files with the wrong owner; use `v1.0.2` or newer.)
+GNOME Software / Discover may label a locally downloaded package "third party" (it isn't from a signed repository); that is expected.
+
+Always take the **latest** release. (`v1.0.1` installed files with the wrong owner and `v1.0.2`–`v1.0.5` shipped Tor's files unreadable by normal users, so Connect failed; use `v1.0.6` or newer.)
 
 Then launch **VPN Desk** from your application menu (or run `/opt/vpn_desk/vpn_desk`).
 
