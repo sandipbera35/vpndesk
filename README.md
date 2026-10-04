@@ -184,6 +184,8 @@ build/linux/x64/release/bundle/vpn_desk   # run it
 ./package.sh                   # optional: build .deb and .rpm into dist/
 ```
 
+`./install.sh` installs the local build as a **VPN Desk (dev)** menu entry for development; it refuses to run if you installed the package (a second copy would shadow it). `./install.sh --uninstall` removes it.
+
 On **arm64**, `bundle_tor.sh` compiles Tor from source, which needs `libevent-dev`, `libssl-dev` and `zlib1g-dev`.
 
 ### Releases
