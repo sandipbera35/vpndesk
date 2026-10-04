@@ -902,12 +902,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Widget _countryField() => Autocomplete<String>(
         initialValue: TextEditingValue(text: countries[selectedCountry]!),
-        optionsBuilder: (v) => countries.values.where((n) => n.toLowerCase().contains(v.text.toLowerCase())),
+        optionsBuilder: (v) => (running || _autoFastest) ? const Iterable<String>.empty() : countries.values.where((n) => n.toLowerCase().contains(v.text.toLowerCase())),
         onSelected: (name) => setState(() => selectedCountry = countries.entries.firstWhere((e) => e.value == name).key),
         fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
           _countryCtrl = ctrl;
           return TextField(
-            controller: ctrl, focusNode: focus, enabled: !running && !_autoFastest,
+            controller: ctrl, focusNode: focus,
+            // readOnly (not enabled:false) so the Auto chip in the suffix stays tappable.
+            readOnly: running || _autoFastest,
+            style: TextStyle(color: (running || _autoFastest) ? Colors.white54 : null),
             onChanged: (v) { for (final e in countries.entries) { if (e.value.toLowerCase() == v.toLowerCase()) selectedCountry = e.key; } },
             decoration: InputDecoration(
               hintText: _autoFastest ? 'Fastest available' : 'Search a country…',

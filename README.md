@@ -46,12 +46,14 @@ Download the package for your machine from the [**Releases**](https://github.com
 | Fedora / RHEL / openSUSE, ARM64 | `vpn-desk-<version>-1.aarch64.rpm` |
 
 ```bash
-# Debian / Ubuntu
-sudo apt install ./vpn-desk_1.0.0_amd64.deb
+# Debian / Ubuntu  (use the file name you downloaded)
+sudo apt install ./vpn-desk_<version>_amd64.deb
 
-# Fedora
-sudo dnf install ./vpn-desk-1.0.0-1.x86_64.rpm
+# Fedora / RHEL / openSUSE
+sudo dnf install ./vpn-desk-<version>-1.x86_64.rpm
 ```
+
+Always take the **latest** release. (`v1.0.1` packages installed files with the wrong owner; use `v1.0.2` or newer.)
 
 Then launch **VPN Desk** from your application menu (or run `/opt/vpn_desk/vpn_desk`).
 
