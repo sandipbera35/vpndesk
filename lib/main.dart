@@ -90,6 +90,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _statsTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       _loadCountryStats();
       if (running && !_loadingSpeed) _loadSpeed();
+      if (_realLL == null && _ipRe.hasMatch(realIp)) _loadRealGeo(realIp);
     });
     _realTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (!running && !connecting) _loadRealIp(); });
     _timer = Timer.periodic(const Duration(seconds: 20), (_) { _refreshStatus(); if (running && !_loadingExit) _loadExitIp(silent: true); });
@@ -131,34 +132,83 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
+  static final _ipRe = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
+
   Future<void> _loadRealIp() async {
     if (_sysActive) return; // all traffic is tunnelled: a lookup would return the exit IP
-    try {
-      final ip = (await _get('https://api.ipify.org', timeout: 15)).trim();
-      if (mounted) setState(() => realIp = ip);
-      if (_realLL == null || ip != _realGeoIp) _loadRealGeo(ip);
-    } catch (_) {
-      if (mounted) setState(() => realIp = 'offline');
+    for (final url in ['https://api.ipify.org', 'https://icanhazip.com', 'https://ifconfig.me/ip', 'https://api64.ipify.org']) {
+      try {
+        final ip = (await _get(url, timeout: 12)).trim();
+        if (!_ipRe.hasMatch(ip)) continue;
+        if (mounted) setState(() => realIp = ip);
+        if (_realLL == null || ip != _realGeoIp) _loadRealGeo(ip);
+        return;
+      } catch (_) {}
     }
+    if (mounted && !_ipRe.hasMatch(realIp)) setState(() => realIp = 'offline'); // keep last good value otherwise
   }
 
   String? _realGeoIp;
+  bool _geoBusy = false;
+  File get _realGeoFile => File('${_cfgDir.path}/realgeo.json');
 
-  /// Lat/lon of the real IP (direct lookup), for the map pin.
-  Future<void> _loadRealGeo(String ip) async {
-    for (final url in ['https://ipwho.is/$ip', 'https://ipapi.co/$ip/json/']) {
+  /// Latitude/longitude/place for [ip], trying several free providers (any one can be rate-limited
+  /// or blocked). Looking up an IP number through Tor reveals nothing, so [viaTor] is safe while connected.
+  Future<({double lat, double lon, String place})?> _geo(String ip, {bool viaTor = false}) async {
+    String place(dynamic city, dynamic country) =>
+        [city, country].where((e) => e != null && '$e'.isNotEmpty).join(', ');
+    final providers = <String, ({double lat, double lon, String place})? Function(Map<String, dynamic>)>{
+      'https://ipinfo.io/$ip/json': (j) {
+        final loc = (j['loc'] as String?)?.split(',');
+        if (loc == null || loc.length != 2) return null;
+        return (lat: double.parse(loc[0]), lon: double.parse(loc[1]), place: place(j['city'], countries[(j['country'] as String? ?? '').toLowerCase()] ?? j['country']));
+      },
+      'https://get.geojs.io/v1/ip/geo/$ip.json': (j) {
+        final la = double.tryParse('${j['latitude']}'), lo = double.tryParse('${j['longitude']}');
+        return la == null || lo == null ? null : (lat: la, lon: lo, place: place(j['city'], j['country']));
+      },
+      'https://ipwho.is/$ip': (j) => j['success'] == false || j['latitude'] == null
+          ? null
+          : (lat: (j['latitude'] as num).toDouble(), lon: (j['longitude'] as num).toDouble(), place: place(j['city'], j['country'])),
+      'https://ipapi.co/$ip/json/': (j) => j['latitude'] == null
+          ? null
+          : (lat: (j['latitude'] as num).toDouble(), lon: (j['longitude'] as num).toDouble(), place: place(j['city'], j['country_name'])),
+    };
+    for (final e in providers.entries) {
       try {
-        final j = jsonDecode(await _get(url, timeout: 15)) as Map<String, dynamic>;
-        if (j['latitude'] == null || j['success'] == false) continue;
-        _realGeoIp = ip;
-        if (mounted) {
-          setState(() {
-            _realLL = (lat: (j['latitude'] as num).toDouble(), lon: (j['longitude'] as num).toDouble());
-            _realPlace = [j['city'], j['country'] ?? j['country_name']].where((e) => e != null && '$e'.isNotEmpty).join(', ');
-          });
-        }
-        return;
+        final r = e.value(jsonDecode(await _get(e.key, viaTor: viaTor, timeout: 12)) as Map<String, dynamic>);
+        if (r != null) return r;
       } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Lat/lon of the real IP for the map pin. Cached on disk so it shows instantly and survives provider outages.
+  Future<void> _loadRealGeo(String ip) async {
+    if (_geoBusy) return;
+    _geoBusy = true;
+    try {
+      try {
+        final c = jsonDecode(_realGeoFile.readAsStringSync()) as Map<String, dynamic>;
+        if (c['ip'] == ip && mounted) {
+          _realGeoIp = ip;
+          setState(() {
+            _realLL = (lat: (c['lat'] as num).toDouble(), lon: (c['lon'] as num).toDouble());
+            _realPlace = c['place'] as String?;
+          });
+          return;
+        }
+      } catch (_) {}
+      final g = await _geo(ip, viaTor: running && _tor != null);
+      if (g == null || !mounted) return;
+      _realGeoIp = ip;
+      setState(() {
+        _realLL = (lat: g.lat, lon: g.lon);
+        _realPlace = g.place;
+      });
+      try { _realGeoFile.writeAsStringSync(jsonEncode({'ip': ip, 'lat': g.lat, 'lon': g.lon, 'place': g.place})); } catch (_) {}
+    } finally {
+      _geoBusy = false;
     }
   }
 
@@ -193,6 +243,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       } catch (_) {}
     }
     if (mounted) setState(() { if (result != null || !silent) exitIp = result ?? 'unavailable'; _loadingExit = false; });
+    if (result != null && _exitLL == null && mounted && running) {
+      final ip = result.split(' ').first;
+      if (_ipRe.hasMatch(ip)) {
+        final g = await _geo(ip, viaTor: true);
+        if (g != null && mounted && running) setState(() { _exitLL = (lat: g.lat, lon: g.lon); _exitPlace = g.place; });
+      }
+    }
     if (!mounted || !running) return;
     if (result == null) {
       _unpinExit();
