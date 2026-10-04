@@ -16,10 +16,11 @@ rm -rf "$DIST" "$APP/.pkg"
 
 # ---- common staging ----
 STAGE="$APP/.pkg/root"
-mkdir -p "$STAGE/opt/vpn_desk" \
+mkdir -p "$STAGE/opt/vpn_desk" "$STAGE/usr/share/polkit-1/actions" \
          "$STAGE/usr/share/applications" \
          "$STAGE/usr/share/icons/hicolor/512x512/apps"
 cp -r "$BUNDLE/"* "$STAGE/opt/vpn_desk/"
+install -m 644 "$APP/packaging/linux/io.vpndesk.net.policy" "$STAGE/usr/share/polkit-1/actions/io.vpndesk.net.policy"
 cat > "$STAGE/usr/share/applications/vpn_desk.desktop" <<EOF
 [Desktop Entry]
 Name=VPN Desk
@@ -41,7 +42,8 @@ Version: $VERSION
 Section: net
 Priority: optional
 Architecture: $DEBARCH
-Depends: libgtk-3-0, libc6 (>= 2.34)$EXTRA_DEB
+Depends: libgtk-3-0, libc6 (>= 2.34), nftables$EXTRA_DEB
+Recommends: policykit-1 | polkitd, pkexec | policykit-1
 Maintainer: vpn-desk developers
 Description: Desktop GUI for Tor country simulation and VPN management
 EOF
@@ -60,7 +62,8 @@ Release: 1
 Summary: Desktop GUI for Tor country simulation
 License: MIT
 BuildArch: $RPMARCH
-Requires: gtk3$EXTRA_RPM
+Requires: gtk3, nftables$EXTRA_RPM
+Recommends: polkit
 AutoReqProv: no
 Source0: vpn_desk-${VERSION}-bundle.tar.gz
 
@@ -74,6 +77,7 @@ tar xzf %{SOURCE0} -C %{buildroot}
 %files
 /opt/vpn_desk
 /usr/share/applications/vpn_desk.desktop
+/usr/share/polkit-1/actions/io.vpndesk.net.policy
 /usr/share/icons/hicolor/512x512/apps/vpn_desk.png
 EOF
 rpmbuild -bb --define "_topdir $TOPDIR" "$TOPDIR/SPECS/vpn-desk.spec" && \

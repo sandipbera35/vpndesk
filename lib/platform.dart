@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 import 'dart:io';
 
 /// Everything that differs between Linux, macOS and Windows lives here.
@@ -56,6 +58,17 @@ class Plat {
     final g4 = File('${d.path}/geoip'), g6 = File('${d.path}/geoip6');
     return '${g4.existsSync() ? 'GeoIPFile ${torPath(g4.path)}\n' : ''}'
         '${g6.existsSync() ? 'GeoIPv6File ${torPath(g6.path)}\n' : ''}';
+  }
+
+  /// Open a link in the user's default browser.
+  static Future<void> openUrl(String url) async {
+    try {
+      if (win) {
+        await Process.run('cmd', ['/c', 'start', '', url]);
+      } else {
+        await Process.run(mac ? 'open' : 'xdg-open', [url]);
+      }
+    } catch (_) {}
   }
 
   static File get _pidFile => File('${configDir().path}/tor.pid');
@@ -126,6 +139,80 @@ class Plat {
       const key = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings';
       if (on) await run('reg', ['add', key, '/v', 'ProxyServer', '/t', 'REG_SZ', '/d', 'socks=127.0.0.1:9050', '/f']);
       await run('reg', ['add', key, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f']);
+    }
+  }
+
+  // ---- Optional system-wide mode (Linux: nftables transparent proxy via a pkexec helper) ----
+
+  static bool _has(String bin) {
+    final dirs = [...(Platform.environment['PATH'] ?? '').split(':'), '/usr/sbin', '/sbin', '/usr/bin', '/bin'];
+    return dirs.any((d) => d.isNotEmpty && File('$d/$bin').existsSync());
+  }
+
+  static String? get helperPath {
+    final f = File('${File(Platform.resolvedExecutable).parent.path}/vpndesk-net');
+    return f.existsSync() ? f.path : null;
+  }
+
+  /// Why system-wide mode can't be used here, or null if it can.
+  static String? systemWideProblem() {
+    if (!linux) return 'System-wide mode is only available on Linux for now.';
+    if (helperPath == null) return 'The VPN Desk network helper is missing from this install.';
+    if (!_has('pkexec')) return 'Needs polkit (pkexec) to ask for administrator permission. Install the "polkit" package.';
+    if (!_has('nft')) return 'Needs nftables. Install the "nftables" package.';
+    return null;
+  }
+
+  static String randomHex(int bytes) {
+    final r = Random.secure();
+    return List.generate(bytes, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// `HashedControlPassword` value for [password], computed by the bundled tor.
+  static Future<String?> hashPassword(String password) async {
+    try {
+      final r = await Process.run(torExecutable(), ['--hash-password', password], environment: torEnv());
+      for (final l in (r.stdout as String).split('\n').reversed) {
+        if (l.trim().startsWith('16:')) return l.trim();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Run [commands] on tor's control port (password auth). Returns tor's raw reply or null on failure.
+  static Future<String?> controlSend(String password, List<String> commands) async {
+    try {
+      final s = await Socket.connect('127.0.0.1', 9061, timeout: const Duration(seconds: 3));
+      s.write('AUTHENTICATE "$password"\r\n${commands.join('\r\n')}\r\nQUIT\r\n');
+      await s.flush();
+      final out = await s.cast<List<int>>().transform(utf8.decoder).join().timeout(const Duration(seconds: 5), onTimeout: () => '');
+      s.destroy();
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// none | active | blocked, as recorded by the helper.
+  static String netState() {
+    try { return File('/run/vpn_desk/state').readAsStringSync().trim(); } catch (_) { return 'none'; }
+  }
+
+  /// Start the helper (admin prompt via pkexec) and feed it the torrc on stdin.
+  static Future<Process> startSystemWide(String torrc) async {
+    final p = await Process.start('pkexec', [helperPath!, 'start']);
+    p.stdin.write(torrc);
+    await p.stdin.close();
+    return p;
+  }
+
+  /// Remove the firewall rules and restore normal networking (admin prompt).
+  static Future<bool> restoreNetwork() async {
+    try {
+      final r = await Process.run('pkexec', [helperPath!, 'stop']);
+      return r.exitCode == 0;
+    } catch (_) {
+      return false;
     }
   }
 }

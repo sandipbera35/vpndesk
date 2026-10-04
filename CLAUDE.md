@@ -49,3 +49,11 @@ Everything lives in `lib/main.dart` (`VpnDeskApp` -> `HomePage` / `_HomePageStat
 - `bundle_tor.sh` (Linux), `package.sh` (deb/rpm, x64+arm64; arm64 tor compiled by `build_tor_linux.sh`), `package_mac.sh` (dmg), `windows_installer.iss` (Inno Setup), `.github/workflows/release.yml` (CI builds all; Flutter cannot cross-compile desktop).
 - macOS/Windows folders were generated on Linux and never built or run here; Windows ARM runs the x64 build under emulation.
 - Torrc has `__OwningControllerProcess <app pid>` so tor dies with the app.
+
+## System-wide mode (Linux, optional, added 2026-10-04)
+
+- Off by default; pill in the hero card. Enabling shows a confirm dialog; connecting triggers one `pkexec` prompt.
+- `packaging/linux/vpndesk-net` (root helper, bundled by `bundle_tor.sh`, polkit policy `packaging/linux/io.vpndesk.net.policy`): creates user `vpndesk`, copies tor to `/var/lib/vpn_desk/runtime`, loads an nftables table `inet vpndesk` (TCP -> TransPort 9040, UDP 53 -> DNSPort 5353, everything else except loopback/LAN/DHCP/tor uid dropped, IPv6 blocked), runs tor as `vpndesk`. Only an allowlist of torrc directives is taken from stdin; no paths from the caller.
+- Tor then runs as another uid, so the app controls it via the control port (127.0.0.1:9061, random password, `SETCONF ExitNodes`, `SIGNAL HALT`) — see `Plat.controlSend`, `_applyExit`. Clean tor exit (code 0, incl. app closing via `__OwningControllerProcess`) removes the rules; a crash leaves a block-all table and `/run/vpn_desk/state=blocked`, and the app shows a Restore banner (`pkexec vpndesk-net stop`).
+- While system-wide, the app's own direct requests are also tunnelled: `_loadRealIp` is skipped (it would return the exit IP) and relay RTT probes are skipped when running.
+- Verified here: bash syntax + `nft -c` on both rulesets. NOT verified: a live connect (it re-routes the machine's traffic), non-Fedora distros, `systemctl restart nftables` / `firewall-cmd --reload` (the former flushes our table = leak).

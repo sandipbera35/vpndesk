@@ -5,6 +5,7 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:socks5_proxy/socks_client.dart';
+import 'about_page.dart';
 import 'platform.dart';
 import 'world_map.dart';
 
@@ -82,6 +83,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   void initState() {
     super.initState();
     _loadSettings();
+    _netBlocked = Plat.linux && Plat.netState() != 'none';
     _loadRealIp();
     _loadSpeed();
     _loadCountryStats();
@@ -100,7 +102,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _realTimer?.cancel();
     _statsTimer?.cancel();
     _dotCtrl.dispose();
-    _tor?.kill();
+    if (_sysActive) {
+      Plat.controlSend(_ctlPass, ['SIGNAL HALT']); // helper then restores networking
+    } else {
+      _tor?.kill();
+    }
     _setSystemProxy(false);
     super.dispose();
   }
@@ -126,6 +132,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _loadRealIp() async {
+    if (_sysActive) return; // all traffic is tunnelled: a lookup would return the exit IP
     try {
       final ip = (await _get('https://api.ipify.org', timeout: 15)).trim();
       if (mounted) setState(() => realIp = ip);
@@ -248,14 +255,99 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   void _loadSettings() {
     try {
-      _autoFastest = (jsonDecode(_settingsFile.readAsStringSync()) as Map)['autoFastest'] == true;
+      final m = jsonDecode(_settingsFile.readAsStringSync()) as Map;
+      _autoFastest = m['autoFastest'] == true;
+      _systemWide = m['systemWide'] == true && Plat.systemWideProblem() == null;
     } catch (_) {}
+  }
+
+  void _saveSettings() {
+    try { _settingsFile.writeAsStringSync(jsonEncode({'autoFastest': _autoFastest, 'systemWide': _systemWide})); } catch (_) {}
   }
 
   void _setAuto(bool on) {
     setState(() => _autoFastest = on);
-    try { _settingsFile.writeAsStringSync(jsonEncode({'autoFastest': on})); } catch (_) {}
+    _saveSettings();
     if (on) _autoSwitch(force: true);
+  }
+
+  // ---- Optional system-wide mode (all apps through Tor via an nftables transparent proxy) ----
+  bool _systemWide = false; // user preference
+  bool _sysActive = false; // this connection is running in system-wide mode
+  bool _netBlocked = false; // helper left traffic blocked (tor crashed / stale rules)
+  String _ctlPass = '';
+
+  Future<void> _toggleSystemWide() async {
+    if (running || connecting) return;
+    if (_systemWide) {
+      setState(() => _systemWide = false);
+      _saveSettings();
+      return;
+    }
+    final problem = Plat.systemWideProblem();
+    if (problem != null) {
+      await _info('System-wide mode unavailable', problem);
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0E1830),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+        title: const Text('Route the whole computer through Tor?'),
+        content: const SizedBox(
+          width: 460,
+          child: Text(
+            'When you connect, VPN Desk will ask for your administrator password once, then send all TCP traffic and DNS from every app through Tor, on any desktop (GNOME, KDE, …).\n\n'
+            '• Tor cannot carry UDP, so QUIC/HTTP3, games and voice calls are blocked while connected (browsers fall back to HTTPS).\n'
+            '• IPv6 is blocked; local-network addresses (192.168.x.x etc.) stay direct.\n'
+            '• If Tor crashes, traffic stays blocked until you press Restore, so nothing leaks.\n'
+            '• Disconnecting or closing the app restores normal networking.',
+            style: TextStyle(height: 1.45, color: Colors.white70),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      setState(() => _systemWide = true);
+      _saveSettings();
+    }
+  }
+
+  Future<void> _info(String title, String body) => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF0E1830),
+          title: Text(title),
+          content: Text(body, style: const TextStyle(color: Colors.white70, height: 1.4)),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+        ),
+      );
+
+  Future<void> _restoreNetwork() async {
+    final ok = await Plat.restoreNetwork();
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _netBlocked = false);
+      _loadRealIp();
+    } else {
+      await _info('Could not restore', 'Administrator permission was not granted. Try again, or run:  pkexec ${Plat.helperPath ?? 'vpndesk-net'} stop');
+    }
+  }
+
+  /// Point tor at [exitNodes] without dropping it: control port in system-wide mode, torrc+reload otherwise.
+  Future<void> _applyExit(String exitNodes) async {
+    if (_tor == null) return;
+    if (_sysActive) {
+      await Plat.controlSend(_ctlPass, ['SETCONF ExitNodes="$exitNodes" StrictNodes=1']);
+    } else {
+      _writeTorrc(exitNodes);
+      await Plat.reloadTor(_tor!, '${_cfgDir.path}/data');
+    }
   }
 
   double _speedOf(String c) => _measured[c] ?? _estMbps[c] ?? 0;
@@ -396,8 +488,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       final exits = await _topRelays('flag=Exit&country=$cc', 1);
       if (!mounted || _tor == null) return;
       _pinnedIp = exits.isEmpty ? 'pending' : exits.first; // non-null: don't re-pin to the old exit
-      _writeTorrc(exits.isEmpty ? '{$cc}' : '\$${exits.first}');
-      await Plat.reloadTor(_tor!, '${_cfgDir.path}/data');
+      await _applyExit(exits.isEmpty ? '{$cc}' : '\$${exits.first}');
       await Future.delayed(const Duration(seconds: 2));
       if (!mounted || _tor == null) return;
       await _loadExitIp();
@@ -507,15 +598,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   void _pinExit(String ip) {
     if (_pinnedIp != null || _tor == null || !RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(ip)) return;
     _pinnedIp = ip;
-    _writeTorrc(ip);
-    Plat.reloadTor(_tor!, '${_cfgDir.path}/data');
+    _applyExit(ip);
   }
 
   void _unpinExit() {
     if (_pinnedIp == null || _tor == null) return;
     _pinnedIp = null;
-    _writeTorrc('{$selectedCountry}');
-    Plat.reloadTor(_tor!, '${_cfgDir.path}/data');
+    _applyExit('{$selectedCountry}');
   }
 
   Future<void> _start() async {
@@ -548,7 +637,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final guards = await _topRelays('flag=Guard', 12);
     _entryNodes = guards.map((f) => '\$$f').join(',');
     if (exits.isNotEmpty) _pinnedIp = exits.first; // already pinned to one exit
-    _writeTorrc(exits.isEmpty ? '{$selectedCountry}' : '\$${exits.first}');
+    final exitNodes = exits.isEmpty ? '{$selectedCountry}' : '\$${exits.first}';
+    if (_systemWide && Plat.systemWideProblem() == null) {
+      await _startSystemWide(exitNodes);
+      return;
+    }
+    _writeTorrc(exitNodes);
     try {
       _tor = await Process.start(Plat.torExecutable(), ['-f', Plat.torPath(_torrcPath)], environment: Plat.torEnv());
       Plat.rememberTor(_tor!.pid);
@@ -579,7 +673,67 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
+  /// System-wide connect: one pkexec prompt, then the helper installs nftables rules and runs tor.
+  Future<void> _startSystemWide(String exitNodes) async {
+    _ctlPass = Plat.randomHex(16);
+    final hash = await Plat.hashPassword(_ctlPass);
+    if (hash == null) {
+      setState(() { log += 'Could not prepare the Tor control password.\n'; connecting = false; });
+      return;
+    }
+    final torrc = 'ExitNodes $exitNodes\nStrictNodes 1\n'
+        '${_entryNodes.isEmpty ? '' : 'EntryNodes $_entryNodes\n'}'
+        'HashedControlPassword $hash\nMaxCircuitDirtiness 86400\nNewCircuitPeriod 86400\n__OwningControllerProcess $pid\n';
+    setState(() { log += 'Waiting for administrator permission…\n'; _netBlocked = false; });
+    try {
+      final p = await Plat.startSystemWide(torrc);
+      _tor = p;
+      _sysActive = true;
+      p.stdout.transform(SystemEncoding().decoder).listen((s) {
+        if (!mounted) return;
+        setState(() {
+          log += s;
+          if (s.contains('VPNDESK_BLOCKED')) _netBlocked = true;
+          if (s.contains('Bootstrapped 100%')) {
+            connecting = false;
+            running = true;
+            _loadExitIp();
+            _loadSpeed();
+          }
+        });
+      });
+      p.stderr.transform(SystemEncoding().decoder).listen((s) {
+        if (mounted) setState(() => log += s);
+      });
+      p.exitCode.then((code) {
+        _tor = null;
+        _sysActive = false;
+        if (!mounted) return;
+        setState(() {
+          if (code == 126 || code == 127) log += 'Administrator permission was not granted — system-wide mode not started.\n';
+          if (Plat.netState() == 'blocked') _netBlocked = true;
+          running = false;
+          connecting = false;
+        });
+      });
+    } catch (e) {
+      setState(() { log += 'Failed to start system-wide mode: $e\n'; connecting = false; _sysActive = false; });
+    }
+  }
+
   Future<void> _stop() async {
+    if (_sysActive) {
+      // tor runs as another user behind pkexec: ask it to exit cleanly (HALT); the helper then
+      // removes the firewall rules. Fall back to the helper's `stop` if the control port is gone.
+      final r = await Plat.controlSend(_ctlPass, ['SIGNAL HALT']);
+      if (r == null || !r.contains('250')) await Plat.restoreNetwork();
+      _tor = null;
+      _sysActive = false;
+      setState(() { running = false; connecting = false; exitIp = '—'; _exitLL = null; log += '\nStopped. Normal networking restored.\n'; });
+      _loadRealIp();
+      _loadSpeed();
+      return;
+    }
     _tor?.kill();
     _tor = null;
     await _setSystemProxy(false);
@@ -770,9 +924,72 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         },
       );
 
+  Widget _systemWidePill() {
+    final locked = running || connecting;
+    final problem = Plat.systemWideProblem();
+    final on = _systemWide && problem == null;
+    final color = on ? _teal : Colors.white54;
+    return Tooltip(
+      message: problem != null
+          ? problem
+          : (locked ? 'Disconnect to change this' : 'Send all apps\' traffic through Tor (asks for administrator permission)'),
+      child: MouseRegion(
+        cursor: locked ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: locked ? null : _toggleSystemWide,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: (locked && !on) || problem != null ? 0.55 : 1,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                color: on ? _teal.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.05),
+                border: Border.all(color: on ? _teal : Colors.white24),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(on ? Icons.shield : Icons.shield_outlined, size: 14, color: color),
+                const SizedBox(width: 6),
+                Text(on ? 'System-wide: on · all apps' : 'System-wide: off · browser/proxy apps only',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _blockedBanner() => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: _red.withValues(alpha: 0.12),
+            border: Border.all(color: _red.withValues(alpha: 0.6)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.gpp_maybe_rounded, color: _red),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text('Internet is blocked: a previous system-wide session ended unexpectedly. Restore normal networking, or connect again.',
+                  style: TextStyle(fontSize: 13, height: 1.35)),
+            ),
+            const SizedBox(width: 12),
+            FilledButton(
+              onPressed: _restoreNetwork,
+              style: FilledButton.styleFrom(backgroundColor: _red, foregroundColor: const Color(0xFF07101F)),
+              child: const Text('Restore'),
+            ),
+          ]),
+        ),
+      );
+
   Widget _hero(double width) {
     final title = connecting ? 'Connecting…' : (running ? 'Protected' : 'Not protected');
-    final sub = _switching ? 'Switching location — traffic stays inside Tor' : running ? '${_autoFastest ? 'Auto-fastest · ' : ''}Exit in ${countries[selectedCountry]} · SOCKS5 127.0.0.1:9050' : (connecting ? 'Building a Tor circuit' : 'Pick a country and connect');
+    final sub = _switching ? 'Switching location — traffic stays inside Tor' : running ? '${_sysActive ? 'System-wide · ' : ''}${_autoFastest ? 'Auto-fastest · ' : ''}Exit in ${countries[selectedCountry]} · SOCKS5 127.0.0.1:9050' : (connecting ? 'Building a Tor circuit' : 'Pick a country and connect');
     final head = Row(children: [
       _statusOrb(),
       const SizedBox(width: 14),
@@ -781,6 +998,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           Text(title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: running ? _teal : Colors.white)),
           const SizedBox(height: 2),
           Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          const SizedBox(height: 8),
+          _systemWidePill(),
         ]),
       ),
     ]);
@@ -821,6 +1040,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final compact = width < 640 || height < 640;
     final (_, speedDetail) = _split(speed);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_netBlocked && !connecting && !running) _blockedBanner(),
       _hero(width),
       const SizedBox(height: 14),
       Row(children: [
@@ -834,6 +1054,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       Expanded(child: _mapPanel()),
     ]);
   }
+
+  Widget _windowDots() => Row(children: [
+        _winDot(const Color(0xFFFF5F57), () => appWindow.close()),
+        _winDot(const Color(0xFFFEBC2E), () => appWindow.minimize()),
+        _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
+      ]);
+
+  Widget _aboutButton() => Tooltip(
+        message: 'About VPN Desk',
+        child: TextButton.icon(
+          onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots())),
+          style: TextButton.styleFrom(foregroundColor: Colors.white70, backgroundColor: Colors.white.withValues(alpha: 0.06), shape: const StadiumBorder()),
+          icon: const Icon(Icons.info_outline_rounded, size: 16),
+          label: const Text('About'),
+        ),
+      );
 
   Widget _blob(Alignment a, Color c, double size) => Align(
         alignment: a,
@@ -874,6 +1110,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           icon: const Icon(Icons.public, size: 16),
                           label: const Text('Locations'),
                         )),
+                  const SizedBox(width: 6),
+                  _aboutButton(),
                 ]),
               ),
             ),

@@ -1,0 +1,136 @@
+#!/bin/bash
+# vpndesk-net: privileged helper for VPN Desk's optional system-wide mode (Linux).
+#
+#   vpndesk-net start   reads a torrc from stdin, installs the nftables rules, runs tor as the
+#                       unprivileged 'vpndesk' user and stays in the foreground (tor's log goes to stdout)
+#   vpndesk-net stop    removes the rules and any tor owned by 'vpndesk' (restores normal networking)
+#   vpndesk-net status  prints none | active | blocked
+#
+# Must run as root (the app launches it through pkexec). It takes no paths from the caller: tor is
+# found next to this script and only an allowlist of torrc directives from stdin is honoured.
+set -u
+[ "$(id -u)" = 0 ] || { echo "vpndesk-net must run as root" >&2; exit 1; }
+
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+U=vpndesk
+STATE=/run/vpn_desk
+DATA=/var/lib/vpn_desk
+TABLE="inet vpndesk"
+LAN4='127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16'
+LAN6='::1, fe80::/10, fc00::/7'
+
+rules_clear() { nft delete table $TABLE 2>/dev/null; }
+
+# Everything except loopback, LAN, DHCP and tor itself is dropped.
+rules_block() {
+  rules_clear
+  nft -f - <<RULES
+table $TABLE {
+  chain filter_out {
+    type filter hook output priority 0; policy accept;
+    meta skuid $UID_T accept
+    oifname "lo" accept
+    ip daddr { $LAN4 } accept
+    ip6 daddr { $LAN6 } accept
+    udp dport { 67, 68 } accept
+    drop
+  }
+}
+RULES
+}
+
+# TCP and DNS go to tor's TransPort/DNSPort; everything else (QUIC, other UDP, IPv6) is dropped.
+rules_redirect() {
+  rules_clear
+  nft -f - <<RULES
+table $TABLE {
+  chain nat_out {
+    type nat hook output priority -100; policy accept;
+    meta skuid $UID_T return
+    meta nfproto ipv6 return
+    udp dport 53 redirect to :5353
+    ip daddr { $LAN4 } return
+    meta l4proto tcp redirect to :9040
+  }
+  chain filter_out {
+    type filter hook output priority 0; policy accept;
+    meta skuid $UID_T accept
+    oifname "lo" accept
+    ip daddr { $LAN4 } accept
+    ip6 daddr { $LAN6 } accept
+    udp dport { 67, 68 } accept
+    drop
+  }
+}
+RULES
+}
+
+ensure_user() {
+  id "$U" >/dev/null 2>&1 && return 0
+  useradd --system --no-create-home --home-dir "$DATA" --shell /usr/sbin/nologin "$U" 2>/dev/null \
+    || useradd --system --no-create-home --home-dir "$DATA" --shell /sbin/nologin "$U"
+}
+
+case "${1:-}" in
+  start)
+    command -v nft >/dev/null || { echo "nftables (nft) is required" >&2; exit 2; }
+    ensure_user || { echo "could not create user $U" >&2; exit 3; }
+    UID_T="$(id -u "$U")"
+    pkill -u "$U" -x tor 2>/dev/null; rules_clear
+
+    mkdir -p "$STATE" "$DATA"; chmod 755 "$STATE"
+    install -d -o "$U" -g "$U" -m 700 "$DATA/data"
+    # Run a root-owned copy so the unprivileged user can read it even if the app lives in a private home.
+    rm -rf "$DATA/runtime"; mkdir -p "$DATA/runtime"
+    if [ -x "$HERE/tor/tor" ]; then cp -a "$HERE/tor/." "$DATA/runtime/"; else cp -L "$(command -v tor)" "$DATA/runtime/tor"; fi
+    chown -R root:root "$DATA/runtime"; chmod -R go+rX "$DATA/runtime"
+
+    # Only these directives are taken from the (unprivileged) caller.
+    RAW="$(cat)"
+    {
+      printf '%s\n' "$RAW" | grep -E '^(ExitNodes|StrictNodes|EntryNodes|MaxCircuitDirtiness|NewCircuitPeriod|HashedControlPassword|__OwningControllerProcess) '
+      cat <<TORRC
+SocksPort 127.0.0.1:9050 NoIsolateSOCKSAuth NoIsolateClientAuth NoIsolateClientProtocol NoIsolateDestPort NoIsolateDestAddr
+TransPort 127.0.0.1:9040 NoIsolateClientAddr NoIsolateSOCKSAuth NoIsolateClientProtocol NoIsolateDestPort NoIsolateDestAddr
+DNSPort 127.0.0.1:5353
+ControlPort 127.0.0.1:9061
+DataDirectory $DATA/data
+GeoIPFile $DATA/runtime/geoip
+GeoIPv6File $DATA/runtime/geoip6
+ClientOnly 1
+Log notice stdout
+TORRC
+    } > "$DATA/torrc"
+    chmod 644 "$DATA/torrc"
+
+    # Rules first: until tor is up, traffic hits a closed port and fails (never goes direct).
+    rules_redirect || { echo "failed to load nftables rules" >&2; exit 4; }
+    echo active > "$STATE/state"
+
+    cleanup() { pkill -u "$U" -x tor 2>/dev/null; rules_clear; rm -f "$STATE/state"; }
+    trap 'cleanup; exit 0' TERM INT HUP
+
+    LD_LIBRARY_PATH="$DATA/runtime" setpriv --reuid="$U" --regid="$U" --clear-groups \
+      "$DATA/runtime/tor" -f "$DATA/torrc" &
+    TOR=$!
+    wait "$TOR"; RC=$?
+    if [ "$RC" = 0 ]; then
+      cleanup                       # clean shutdown (Disconnect / app closed): normal networking returns
+    else
+      rules_block                   # tor crashed: stay fail-closed until the user restores
+      echo blocked > "$STATE/state"
+      echo "VPNDESK_BLOCKED tor exited with status $RC; traffic is blocked until restored"
+    fi
+    exit "$RC"
+    ;;
+  stop)
+    pkill -u "$U" -x tor 2>/dev/null
+    rules_clear; rm -f "$STATE/state"
+    ;;
+  status)
+    cat "$STATE/state" 2>/dev/null || echo none
+    ;;
+  *)
+    echo "usage: vpndesk-net start|stop|status" >&2; exit 64
+    ;;
+esac
