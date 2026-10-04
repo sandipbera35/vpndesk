@@ -127,13 +127,12 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
         AnimatedBuilder(
           animation: _glow,
           builder: (_, __) => Container(
-            width: 84, height: 84,
+            width: 104, height: 104,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(colors: [_teal, Color(0xFF22B8CF)]),
+              borderRadius: BorderRadius.circular(26),
               boxShadow: [BoxShadow(color: _teal.withValues(alpha: 0.25 + 0.3 * _glow.value), blurRadius: 24 + 20 * _glow.value)],
             ),
-            child: const Icon(Icons.shield_moon_rounded, size: 44, color: Color(0xFF07101F)),
+            child: ClipRRect(borderRadius: BorderRadius.circular(26), child: Image.asset('assets/icon.png', fit: BoxFit.cover, filterQuality: FilterQuality.high)),
           ),
         ),
         const SizedBox(height: 16),

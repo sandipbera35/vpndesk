@@ -59,3 +59,12 @@ Everything lives in `lib/main.dart` (`VpnDeskApp` -> `HomePage` / `_HomePageStat
 - Verified here: bash syntax + `nft -c` on both rulesets. NOT verified: a live connect (it re-routes the machine's traffic), non-Fedora distros, `systemctl restart nftables` / `firewall-cmd --reload` (the former flushes our table = leak).
 
 - Packaging gotchas: the Tor Expert Bundle ships 700/600 files, so `package.sh`/`fetch_tor.sh` chmod them readable (else tor can't start for normal users); files must be root-owned (`--root-owner-group`, `%defattr`); AppStream metainfo + `io.vpndesk.VPNDesk.desktop` are validated in `package.sh`; spec sets `__brp_check_rpaths` to nil because Fedora rejects the Flutter plugin's RUNPATH.
+
+## Session notes (2026-10-04, perf pass) — supersedes stale bullets above
+
+- The "Architecture" bullets about `pgrep`/`pkill -x tor`/`curl`/hetzner/hardcoded browser path are OUTDATED: the app tracks its own tor child, uses Dart `HttpClient` + `socks5_proxy`, and speed-tests via `speed.cloudflare.com`.
+- Perf rules (user: "no memory leak, don't eat RAM"): `log` in `_HomePageState` is a getter/setter capped to the last 20 KB; the status-orb pulse (`_syncPulse`) and the map's `_loop` ticker run only while connecting/connected. Idle CPU was 85% (map rebuilt all country paths 60 fps); now ~2%. `world_map.dart` caches projected paths per size (`_MapPainter._pathsFor`) and splits a static base layer (`base: true`, RepaintBoundary) from the animated layer. Don't reintroduce always-on tickers or per-frame path building.
+- Window dots are `_WinDot` (hover: scale 1.35 + glow + glyph, press: 0.88). Keep red/yellow/green.
+- `integration_test/app_test.dart` drives the real app (`flutter test integration_test/app_test.dart -d linux`). Verified: dot hover, About, Auto, system-wide dialog, connect/disconnect x2. Known test gaps: sidebar tile lookup ('Germany') found 0 widgets after connecting (unresolved: tile text or layout in test view) so live country switch is untested; never use `pumpAndSettle` on About (repeating glow). Don't `pkill -f flutter_tester` from a command containing that string (kills your own shell).
+- NOT verified: system-wide mode live connect, macOS/Windows builds.
+- Pushed to main WITHOUT a version bump/tag on purpose (user: no release this time). Next release is still 1.0.6 -> bump when asked.

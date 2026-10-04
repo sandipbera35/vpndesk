@@ -44,7 +44,7 @@ class WorldMap extends StatefulWidget {
 class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
   static List<_Country>? _cache;
   List<_Country>? _countries = _cache;
-  late final AnimationController _loop = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+  late final AnimationController _loop = AnimationController(vsync: this, duration: const Duration(seconds: 2));
   late final AnimationController _dropReal = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
   late final AnimationController _dropExit = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
 
@@ -62,6 +62,7 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
         if (mounted) setState(() => _countries = _cache);
       });
     }
+    if (widget.connected) _loop.repeat();
     if (widget.real != null) _dropReal.forward();
     if (widget.exit != null) _dropExit.forward();
   }
@@ -69,6 +70,12 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(WorldMap old) {
     super.didUpdateWidget(old);
+    // Ripples/link animation only matter while connected; an idle ticker would repaint the window forever.
+    if (widget.connected && !_loop.isAnimating) {
+      _loop.repeat();
+    } else if (!widget.connected && _loop.isAnimating) {
+      _loop.animateTo(1).whenComplete(() { if (mounted && !widget.connected) _loop.value = 0; });
+    }
     if (widget.real != old.real) widget.real == null ? _dropReal.reset() : _dropReal.forward(from: 0);
     if (widget.exit != old.exit) widget.exit == null ? _dropExit.reset() : _dropExit.forward(from: 0);
   }
@@ -88,35 +95,67 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
           height: widget.height,
           width: double.infinity,
           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04), border: Border.all(color: Colors.white.withValues(alpha: 0.09)), borderRadius: BorderRadius.circular(20)),
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_loop, _dropReal, _dropExit]),
-            builder: (_, __) => CustomPaint(
-              painter: _MapPainter(
-                countries: _countries,
-                country: widget.country,
-                connected: widget.connected,
-                real: widget.real,
-                exit: widget.exit,
-                realLabel: widget.realLabel,
-                exitLabel: widget.exitLabel,
-                t: _loop.value,
-                dropReal: Curves.bounceOut.transform(_dropReal.value),
-                dropExit: Curves.bounceOut.transform(_dropExit.value),
+          child: Stack(fit: StackFit.expand, children: [
+            // Land + grid never animate: paint once per size/selection instead of 60 times a second.
+            RepaintBoundary(child: CustomPaint(painter: _MapPainter(base: true, countries: _countries, country: widget.country, connected: widget.connected, t: 0, dropReal: 0, dropExit: 0))),
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_loop, _dropReal, _dropExit]),
+                builder: (_, __) => CustomPaint(
+                  painter: _MapPainter(
+                    base: false,
+                    countries: _countries,
+                    country: widget.country,
+                    connected: widget.connected,
+                    real: widget.real,
+                    exit: widget.exit,
+                    realLabel: widget.realLabel,
+                    exitLabel: widget.exitLabel,
+                    t: _loop.value,
+                    dropReal: Curves.bounceOut.transform(_dropReal.value),
+                    dropExit: Curves.bounceOut.transform(_dropExit.value),
+                  ),
+                ),
               ),
             ),
-          ),
+          ]),
         ),
       );
 }
 
 class _MapPainter extends CustomPainter {
-  _MapPainter({required this.countries, required this.country, required this.connected, this.real, this.exit, this.realLabel, this.exitLabel, required this.t, required this.dropReal, required this.dropExit});
+  _MapPainter({required this.base, required this.countries, required this.country, required this.connected, this.real, this.exit, this.realLabel, this.exitLabel, required this.t, required this.dropReal, required this.dropExit});
+  final bool base; // true: static land layer, false: highlight/pins/link layer
   final List<_Country>? countries;
   final String country;
   final bool connected;
   final LatLon? real, exit;
   final String? realLabel, exitLabel;
   final double t, dropReal, dropExit;
+
+  static List<_Country>? _pcCountries;
+  static Size? _pcSize;
+  static List<Path>? _pcPaths;
+
+  /// Projected country outlines, rebuilt only when the map size (or data) changes.
+  static List<Path> _pathsFor(List<_Country> cs, Size size, Offset Function(double, double) proj) {
+    if (identical(_pcCountries, cs) && _pcSize == size && _pcPaths != null) return _pcPaths!;
+    final out = <Path>[];
+    for (final c in cs) {
+      final path = Path();
+      for (final r in c.rings) {
+        for (var i = 0; i < r.length; i++) {
+          final p = proj(r[i].dx, r[i].dy);
+          i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+        }
+        path.close();
+      }
+      out.add(path);
+    }
+    _pcCountries = cs;
+    _pcSize = size;
+    return _pcPaths = out;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -127,29 +166,32 @@ class _MapPainter extends CustomPainter {
     final ox = (size.width - w) / 2, oy = (size.height - h) / 2;
     Offset proj(double lon, double lat) => Offset(ox + (lon + 180) * scale, oy + (maxLat - lat) * scale);
 
-    final grid = Paint()..color = const Color(0xFF16233A)..strokeWidth = 0.6;
-    for (var lon = -180; lon <= 180; lon += 30) { canvas.drawLine(proj(lon.toDouble(), maxLat), proj(lon.toDouble(), minLat), grid); }
-    for (var lat = -60; lat <= 80; lat += 20) { canvas.drawLine(proj(-180, lat.toDouble()), proj(180, lat.toDouble()), grid); }
+    final cs = countries ?? const <_Country>[];
+    final paths = _pathsFor(cs, size, proj);
 
-    final land = Paint()..color = const Color(0xFF3A5278).withValues(alpha: 0.45);
-    final edge = Paint()..color = const Color(0xFF6E8DBA).withValues(alpha: 0.5)..style = PaintingStyle.stroke..strokeWidth = 0.5;
+    if (base) {
+      final grid = Paint()..color = const Color(0xFF16233A)..strokeWidth = 0.6;
+      for (var lon = -180; lon <= 180; lon += 30) { canvas.drawLine(proj(lon.toDouble(), maxLat), proj(lon.toDouble(), minLat), grid); }
+      for (var lat = -60; lat <= 80; lat += 20) { canvas.drawLine(proj(-180, lat.toDouble()), proj(180, lat.toDouble()), grid); }
+      final land = Paint()..color = const Color(0xFF3A5278).withValues(alpha: 0.45);
+      final edge = Paint()..color = const Color(0xFF6E8DBA).withValues(alpha: 0.5)..style = PaintingStyle.stroke..strokeWidth = 0.5;
+      for (var i = 0; i < cs.length; i++) {
+        if (cs[i].code == country) continue;
+        canvas.drawPath(paths[i], land);
+        canvas.drawPath(paths[i], edge);
+      }
+      return;
+    }
+
     final hi = Paint()..color = (connected ? Colors.tealAccent : Colors.amberAccent).withValues(alpha: 0.35 + 0.2 * math.sin(t * 2 * math.pi));
     final hiEdge = Paint()..color = connected ? Colors.tealAccent : Colors.amberAccent..style = PaintingStyle.stroke..strokeWidth = 1.2;
 
     Offset? fallback;
-    for (final c in countries ?? const <_Country>[]) {
-      final sel = c.code == country;
-      final path = Path();
-      for (final r in c.rings) {
-        for (var i = 0; i < r.length; i++) {
-          final p = proj(r[i].dx, r[i].dy);
-          i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-        }
-        path.close();
-      }
-      canvas.drawPath(path, sel ? hi : land);
-      canvas.drawPath(path, sel ? hiEdge : edge);
-      if (sel) fallback = proj(c.center.dx, c.center.dy);
+    for (var i = 0; i < cs.length; i++) {
+      if (cs[i].code != country) continue;
+      canvas.drawPath(paths[i], hi);
+      canvas.drawPath(paths[i], hiEdge);
+      fallback = proj(cs[i].center.dx, cs[i].center.dy);
     }
 
     final realP = real == null ? null : proj(real!.lon, real!.lat);
@@ -213,5 +255,5 @@ class _MapPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MapPainter o) => true;
+  bool shouldRepaint(_MapPainter o) => !base || o.country != country || !identical(o.countries, countries);
 }

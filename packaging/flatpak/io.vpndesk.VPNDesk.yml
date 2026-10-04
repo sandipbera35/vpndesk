@@ -1,6 +1,6 @@
 id: io.vpndesk.VPNDesk
 runtime: org.gnome.Platform
-runtime-version: '47'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: vpn_desk
 finish-args:
@@ -9,8 +9,6 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # Lets the app set GNOME's proxy (optional; the app works without it)
-  - --talk-name=ca.desrt.dconf
 modules:
   - name: tor
     buildsystem: simple
@@ -18,6 +16,7 @@ modules:
       - mkdir -p /app/opt/vpn_desk/tor
       - cp -R tor/. /app/opt/vpn_desk/tor/
       - cp data/geoip data/geoip6 /app/opt/vpn_desk/tor/
+      - chmod -R u+rwX,go+rX /app/opt/vpn_desk/tor
     sources:
       - type: archive
         url: https://dist.torproject.org/torbrowser/15.0.24/tor-expert-bundle-linux-x86_64-15.0.24.tar.gz
@@ -26,10 +25,23 @@ modules:
   - name: vpn-desk
     buildsystem: simple
     build-commands:
-      - cp -r . /app/opt/vpn_desk
+      - rm -rf bundle/tor bundle/vpndesk-net  # tor comes from the module above; the root helper cannot work in the sandbox
+      - cp -r bundle/. /app/opt/vpn_desk/
       - mkdir -p /app/bin
       - ln -s /app/opt/vpn_desk/vpn_desk /app/bin/vpn_desk
-      - install -Dm644 packaging/vpn_desk.desktop /app/share/applications/io.vpndesk.VPNDesk.desktop
+      - install -Dm644 io.vpndesk.VPNDesk.desktop /app/share/applications/io.vpndesk.VPNDesk.desktop
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.vpndesk.VPNDesk.png
+      - sed -e "s/@VERSION@/$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d+ -f1)/" -e "s/@DATE@/$(date +%F)/" -e 's#<icon type="stock">vpn_desk</icon>#<icon type="stock">io.vpndesk.VPNDesk</icon>#' io.vpndesk.VPNDesk.metainfo.xml > io.vpndesk.VPNDesk.metainfo.out.xml
+      - install -Dm644 io.vpndesk.VPNDesk.metainfo.out.xml /app/share/metainfo/io.vpndesk.VPNDesk.metainfo.xml
     sources:
       - type: dir
         path: ../../build/linux/x64/release/bundle
+        dest: bundle
+      - type: file
+        path: io.vpndesk.VPNDesk.desktop
+      - type: file
+        path: ../icon.png
+      - type: file
+        path: ../linux/io.vpndesk.VPNDesk.metainfo.xml
+      - type: file
+        path: ../../pubspec.yaml

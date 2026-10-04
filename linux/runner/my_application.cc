@@ -24,6 +24,15 @@ static void my_application_activate(GApplication* application) {
   // Frameless window: the Flutter UI draws its own title bar (bitsdojo_window).
   auto bdw = bitsdojo_window_from(window);
   bdw->setCustomFrame(true);
+  // Window icon from the bundled asset (works in any install location, incl. Flatpak).
+  {
+    g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
+    if (exe != nullptr) {
+      g_autofree gchar* dir = g_path_get_dirname(exe);
+      g_autofree gchar* icon = g_build_filename(dir, "data", "flutter_assets", "assets", "icon.png", nullptr);
+      gtk_window_set_icon_from_file(window, icon, nullptr);
+    }
+  }
   gtk_window_set_default_size(window, 800, 620);
   // Transparent window so Flutter can draw macOS-style rounded corners.
   GdkScreen* rgba_screen = gtk_widget_get_screen(GTK_WIDGET(window));

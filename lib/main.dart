@@ -66,12 +66,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String selectedCountry = 'cz';
   TextEditingController? _countryCtrl;
   bool _loadingExit = false, _loadingSpeed = false;
+  int _exitGen = 0;
   String realIp = '—';
   String exitIp = '—';
   LatLon? _realLL, _exitLL;
   String? _realPlace, _exitPlace;
   String speed = '—';
-  String log = '';
+  String _log = '';
+  // Tor logs for as long as the app is open: keep only the tail so the string (and each rebuild) stays bounded.
+  String get log => _log;
+  set log(String v) => _log = v.length > 20000 ? v.substring(v.length - 20000) : v;
   Timer? _timer, _realTimer, _statsTimer;
   late AnimationController _dotCtrl;
 
@@ -93,8 +97,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (_realLL == null && _ipRe.hasMatch(realIp)) _loadRealGeo(realIp);
     });
     _realTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (!running && !connecting) _loadRealIp(); });
-    _timer = Timer.periodic(const Duration(seconds: 20), (_) { _refreshStatus(); if (running && !_loadingExit) _loadExitIp(silent: true); });
+    _timer = Timer.periodic(const Duration(seconds: 20), (_) { _refreshStatus(); if (running && !_loadingExit && !_switching) _loadExitIp(silent: true); });
     _dotCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  }
+
+  // The pulse only matters while connecting/connected; an idle repeating ticker would repaint (and burn CPU) forever.
+  void _syncPulse() {
+    final want = running || connecting;
+    if (want == _dotCtrl.isAnimating) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (running || connecting) {
+        if (!_dotCtrl.isAnimating) _dotCtrl.repeat(reverse: true);
+      } else {
+        _dotCtrl.stop();
+      }
+    });
   }
 
   @override
@@ -214,12 +232,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   /// Exit IP via Tor, trying several providers (any one can be rate-limited).
   Future<void> _loadExitIp({bool silent = false}) async {
-    if (_loadingExit) return;
+    final gen = ++_exitGen; // a newer call supersedes an older one (e.g. location switched mid-lookup)
     setState(() { _loadingExit = !silent; if (!silent) exitIp = '…'; });
     String? result;
-    for (var attempt = 0; attempt < 3 && result == null && mounted && running; attempt++) {
+    for (var attempt = 0; attempt < 3 && result == null && mounted && running && gen == _exitGen; attempt++) {
       try {
-        final j = jsonDecode(await _get('https://ipwho.is/', viaTor: true, timeout: 20)) as Map<String, dynamic>;
+        final j = jsonDecode(await _get('https://ipwho.is/', viaTor: true, timeout: 12)) as Map<String, dynamic>;
         if (j['success'] == true && j['ip'] != null) {
           result = '${j['ip']} — ${j['country']}';
           if (j['latitude'] != null && mounted) {
@@ -230,7 +248,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       } catch (_) {}
       if (result != null) break;
       try {
-        final j = jsonDecode(await _get('https://api.country.is/', viaTor: true, timeout: 20)) as Map<String, dynamic>;
+        final j = jsonDecode(await _get('https://api.country.is/', viaTor: true, timeout: 12)) as Map<String, dynamic>;
         if (j['ip'] != null) {
           final name = countries[(j['country'] as String? ?? '').toLowerCase()];
           result = name == null ? '${j['ip']}' : '${j['ip']} — $name';
@@ -238,10 +256,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       } catch (_) {}
       if (result != null) break;
       try {
-        final j = jsonDecode(await _get('https://check.torproject.org/api/ip', viaTor: true, timeout: 20)) as Map<String, dynamic>;
+        final j = jsonDecode(await _get('https://check.torproject.org/api/ip', viaTor: true, timeout: 12)) as Map<String, dynamic>;
         if (j['IP'] != null) result = '${j['IP']}';
       } catch (_) {}
     }
+    if (gen != _exitGen) return; // superseded: let the newer lookup report
     if (mounted) setState(() { if (result != null || !silent) exitIp = result ?? 'unavailable'; _loadingExit = false; });
     if (result != null && _exitLL == null && mounted && running) {
       final ip = result.split(' ').first;
@@ -299,6 +318,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String? _pinnedIp;
   Map<String, double> _estMbps = {};
   bool _statsFailed = false, _statsBusy = false;
+  Map<String, String> _exitFp = {}; // best exit relay fingerprint per country (instant switching)
   Map<String, double> _rttMs = {};  // live ping per country (ms)
   DateTime? _statsAt;
 
@@ -475,7 +495,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _loadMeasured();
     try {
       final out = await _get(
-          'https://onionoo.torproject.org/details?flag=Exit&running=true&fields=country,observed_bandwidth,or_addresses,flags&limit=3000&order=-consensus_weight',
+          'https://onionoo.torproject.org/details?flag=Exit&running=true&fields=country,observed_bandwidth,or_addresses,flags,fingerprint&limit=3000&order=-consensus_weight',
           viaTor: running && _tor != null,
           timeout: 40);
       final top = <String, List<Map<String, dynamic>>>{};
@@ -514,6 +534,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (mounted) setState(() {
         _estMbps = est;
         _rttMs = rtts;
+        _exitFp = {
+          for (final e in top.entries)
+            if (e.value.isNotEmpty && e.value.first['fingerprint'] != null) e.key: e.value.first['fingerprint'] as String
+        };
         _statsAt = DateTime.now();
         _statsFailed = false;
         _noExits = countries.keys.where((c) => !top.containsKey(c)).toSet();
@@ -527,36 +551,59 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   bool _switching = false;
+  int _switchGen = 0;
 
-  /// Change exit country without ever dropping Tor or the system proxy: rewrite the torrc and
-  /// reload. SOCKS stays up and ExitNodes is strict, so traffic waits for a new circuit instead of
-  /// going direct, and the real IP is never exposed mid-switch.
+  /// Change exit country without ever dropping Tor or the system proxy: re-point ExitNodes on the live
+  /// tor. SOCKS stays up and ExitNodes is strict, so traffic waits for a new circuit instead of going
+  /// direct, and the real IP is never exposed mid-switch.
+  /// The UI (highlight, pin) updates immediately; a newer request supersedes an older one.
   Future<void> _switchLive(String cc) async {
-    if (_tor == null || _switching) return;
+    if (_tor == null) return;
+    final gen = ++_switchGen;
+    final oldIp = exitIp.split(' ').first;
     setState(() {
       _switching = true;
       selectedCountry = cc;
       exitIp = '…';
-      _exitLL = null;
+      _exitLL = null; // map shows the new country's pin right away
+      _exitPlace = null;
       log += 'Switching to ${countries[cc]} (proxy stays on)…\n';
     });
     _countryCtrl?.text = countries[cc]!;
+    bool stale() => !mounted || _tor == null || gen != _switchGen;
     try {
-      final exits = await _topRelays('flag=Exit&country=$cc', 1);
-      if (!mounted || _tor == null) return;
-      _pinnedIp = exits.isEmpty ? 'pending' : exits.first; // non-null: don't re-pin to the old exit
-      await _applyExit(exits.isEmpty ? '{$cc}' : '\$${exits.first}');
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted || _tor == null) return;
-      await _loadExitIp();
-      if (mounted && running) _loadSpeed();
+      // Use the relay cached by the last stats refresh; only ask Onionoo if we have none yet.
+      var fp = _exitFp[cc];
+      if (fp == null) {
+        final exits = await _topRelays('flag=Exit&country=$cc', 1);
+        if (stale()) return;
+        fp = exits.isEmpty ? null : exits.first;
+      }
+      _pinnedIp = fp ?? 'pending'; // non-null: don't re-pin to the old exit
+      await _applyExit(fp == null ? '{$cc}' : '\$$fp');
+      // Poll a tiny IP-only endpoint through Tor until the exit actually changes, then show it at once;
+      // the full lookup (country, location pin) follows.
+      for (var i = 0; i < 10 && !stale(); i++) {
+        await Future.delayed(Duration(milliseconds: i == 0 ? 600 : 900));
+        if (stale()) return;
+        try {
+          final ip = (await _get('https://api.ipify.org', viaTor: true, timeout: 8)).trim();
+          if (_ipRe.hasMatch(ip) && ip != oldIp) {
+            if (!stale()) setState(() => exitIp = '$ip — ${countries[cc]}');
+            break;
+          }
+        } catch (_) {}
+      }
+      if (stale()) return;
+      await _loadExitIp(silent: true);
+      if (!stale() && running) _loadSpeed();
     } finally {
-      if (mounted) setState(() => _switching = false);
+      if (mounted && gen == _switchGen) setState(() => _switching = false);
     }
   }
 
   Future<void> _selectCountry(String cc) async {
-    if (_noExits.contains(cc) || _switching || (cc == selectedCountry && (running || connecting))) return;
+    if (_noExits.contains(cc) || (cc == selectedCountry && (running || connecting))) return;
     if (running && _tor != null) {
       await _switchLive(cc);
       return;
@@ -798,14 +845,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _loadSpeed();
   }
 
-  Widget _winDot(Color c, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 14, height: 14,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: Border.all(color: Colors.black26)),
-        ),
-      );
+  Widget _winDot(Color c, VoidCallback onTap) => _WinDot(color: c, onTap: onTap);
 
   static const _teal = Color(0xFF2DE2C4), _amber = Color(0xFFFFC857), _red = Color(0xFFFF6B6B);
 
@@ -1011,8 +1051,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(on ? Icons.shield : Icons.shield_outlined, size: 14, color: color),
                 const SizedBox(width: 6),
-                Text(on ? 'System-wide: on · all apps' : 'System-wide: off · browser/proxy apps only',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
+                Flexible(child: Text(on ? 'System-wide: on · all apps' : 'System-wide: off · browser/proxy apps only',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color))),
               ]),
             ),
           ),
@@ -1141,6 +1182,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        _syncPulse();
         final showSidebar = box.maxWidth >= 860;
         final sideW = (box.maxWidth * 0.28).clamp(250.0, 330.0);
         return Scaffold(
@@ -1160,7 +1202,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   _winDot(const Color(0xFFFEBC2E), () => appWindow.minimize()),
                   _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
                   const SizedBox(width: 16),
-                  const Icon(Icons.shield_moon_rounded, size: 17, color: _teal),
+                  ClipRRect(borderRadius: BorderRadius.circular(5), child: Image.asset('assets/icon.png', width: 20, height: 20, filterQuality: FilterQuality.medium)),
                   const SizedBox(width: 8),
                   const Text('VPN Desk', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, letterSpacing: 0.3)),
                   const Spacer(),
@@ -1351,4 +1393,61 @@ class _CountryTileState extends State<_CountryTile> {
       ),
     );
   }
+}
+
+/// Mac-style window dot: grows, glows and shows its glyph (x / - / +) under the pointer.
+class _WinDot extends StatefulWidget {
+  const _WinDot({required this.color, required this.onTap});
+  final Color color;
+  final VoidCallback onTap;
+  @override
+  State<_WinDot> createState() => _WinDotState();
+}
+
+class _WinDotState extends State<_WinDot> {
+  bool _hover = false, _down = false;
+
+  IconData get _glyph => switch (widget.color.toARGB32()) {
+        0xFFFF5F57 => Icons.close_rounded,
+        0xFFFEBC2E => Icons.remove_rounded,
+        _ => Icons.add_rounded,
+      };
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() { _hover = false; _down = false; }),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          onTapDown: (_) => setState(() => _down = true),
+          onTapUp: (_) => setState(() => _down = false),
+          onTapCancel: () => setState(() => _down = false),
+          child: SizedBox(
+            width: 22, height: 22, // fixed hit area so growing doesn't shift neighbours
+            child: Center(
+              child: AnimatedScale(
+                scale: _down ? 0.88 : (_hover ? 1.35 : 1),
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOutBack,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 14, height: 14,
+                  decoration: BoxDecoration(
+                    color: _hover ? Color.lerp(widget.color, Colors.white, 0.12) : widget.color,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.black26),
+                    boxShadow: _hover ? [BoxShadow(color: widget.color.withValues(alpha: 0.75), blurRadius: 10, spreadRadius: 1)] : null,
+                  ),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 120),
+                    opacity: _hover ? 1 : 0,
+                    child: Icon(_glyph, size: 11, color: Colors.black.withValues(alpha: 0.65)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }

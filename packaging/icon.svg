@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16295A"/>
+      <stop offset="0.55" stop-color="#0B1630"/>
+      <stop offset="1" stop-color="#060B18"/>
+    </linearGradient>
+    <radialGradient id="glowTeal" cx="0.18" cy="0.12" r="0.7">
+      <stop offset="0" stop-color="#2DE2C4" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2DE2C4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowViolet" cx="0.88" cy="0.92" r="0.75">
+      <stop offset="0" stop-color="#7C5CFF" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#7C5CFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shield" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#7DFFE6"/>
+      <stop offset="0.5" stop-color="#2DE2C4"/>
+      <stop offset="1" stop-color="#1FA6D6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="26"/>
+      <feOffset dy="28"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <clipPath id="globeClip"><circle cx="512" cy="520" r="196"/></clipPath>
+    <clipPath id="tile"><rect width="1024" height="1024" rx="236"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#glowTeal)"/>
+    <rect width="1024" height="1024" fill="url(#glowViolet)"/>
+  </g>
+  <rect x="4" y="4" width="1016" height="1016" rx="232" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="8"/>
+
+  <!-- shield -->
+  <g filter="url(#shadow)">
+    <path id="s" d="M512 150 L812 262 V524 C812 712 690 846 512 912 C334 846 212 712 212 524 V262 Z" fill="url(#shield)"/>
+  </g>
+  <path d="M512 150 L812 262 V524 C812 712 690 846 512 912 C334 846 212 712 212 524 V262 Z" fill="url(#shine)"/>
+  <path d="M512 196 L772 292 V522 C772 686 668 802 512 861 C356 802 252 686 252 522 V292 Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="7"/>
+
+  <!-- globe -->
+  <g clip-path="url(#globeClip)" fill="none" stroke="#071426" stroke-opacity="0.82" stroke-width="16" stroke-linecap="round">
+    <ellipse cx="512" cy="520" rx="92" ry="196"/>
+    <line x1="512" y1="320" x2="512" y2="720"/>
+    <line x1="312" y1="520" x2="712" y2="520"/>
+    <path d="M330 410 Q512 450 694 410"/>
+    <path d="M330 630 Q512 590 694 630"/>
+  </g>
+  <circle cx="512" cy="520" r="196" fill="none" stroke="#071426" stroke-opacity="0.88" stroke-width="22"/>
+
+  <!-- route: real (amber) -> exit (white) -->
+  <path d="M436 612 Q470 430 604 428" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-dasharray="2 30"/>
+  <circle cx="436" cy="612" r="46" fill="#FFC857" filter="url(#soft)" opacity="0.9"/>
+  <circle cx="436" cy="612" r="30" fill="#FFC857" stroke="#071426" stroke-width="10"/>
+  <circle cx="604" cy="428" r="52" fill="#FFFFFF" filter="url(#soft)" opacity="0.8"/>
+  <circle cx="604" cy="428" r="32" fill="#FFFFFF" stroke="#071426" stroke-width="10"/>
+  <circle cx="604" cy="428" r="12" fill="#1FA6D6"/>
+</svg>
