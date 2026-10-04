@@ -48,7 +48,7 @@ Maintainer: vpn-desk developers
 Description: Desktop GUI for Tor country simulation and VPN management
 EOF
 mkdir -p "$DIST"
-dpkg-deb --build "$STAGE" "$DIST/vpn-desk_${VERSION}_${DEBARCH}.deb" 2>/dev/null || \
+dpkg-deb --root-owner-group --build "$STAGE" "$DIST/vpn-desk_${VERSION}_${DEBARCH}.deb" 2>/dev/null || \
   python3 -c "print('dpkg-deb not available - install: sudo dnf install dpkg')"
 
 # ---- .rpm ----
@@ -75,6 +75,7 @@ mkdir -p %{buildroot}
 tar xzf %{SOURCE0} -C %{buildroot}
 
 %files
+%defattr(-,root,root,-)
 /opt/vpn_desk
 /usr/share/applications/vpn_desk.desktop
 /usr/share/polkit-1/actions/io.vpndesk.net.policy
