@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=VPN Desk
+Exec=vpn_desk
+Icon=vpn_desk
+Type=Application
+Categories=Network;
+Terminal=false

@@ -1,0 +1,21 @@
+# Linux installers (x64 + arm64) with tor bundled. macOS/Windows scripts exist but are not built yet. Copy this folder's .github/ to the repo root if the app
+# lives in a subfolder (and set `working-directory`/paths accordingly).
+name: release
+on:
+  push: { tags: ['v*'] }
+  workflow_dispatch:
+jobs:
+  linux:
+    strategy:
+      matrix:
+        include: [{ os: ubuntu-22.04, arch: x64 }, { os: ubuntu-22.04-arm, arch: arm64 }]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm libevent-dev libssl-dev zlib1g-dev dpkg-dev
+      - run: flutter pub get && flutter build linux --release
+      - run: ./bundle_tor.sh && ./package.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: linux-${{ matrix.arch }}, path: dist/* }

@@ -1,0 +1,35 @@
+id: io.vpndesk.VPNDesk
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: vpn_desk
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Lets the app set GNOME's proxy (optional; the app works without it)
+  - --talk-name=ca.desrt.dconf
+modules:
+  - name: tor
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/opt/vpn_desk/tor
+      - cp -R tor/. /app/opt/vpn_desk/tor/
+      - cp data/geoip data/geoip6 /app/opt/vpn_desk/tor/
+    sources:
+      - type: archive
+        url: https://dist.torproject.org/torbrowser/15.0.24/tor-expert-bundle-linux-x86_64-15.0.24.tar.gz
+        sha256: 8e012ec6815d7899cb64011582e2dade88e74119c6661068a2a3252de0ccd7f2
+        strip-components: 0
+  - name: vpn-desk
+    buildsystem: simple
+    build-commands:
+      - cp -r . /app/opt/vpn_desk
+      - mkdir -p /app/bin
+      - ln -s /app/opt/vpn_desk/vpn_desk /app/bin/vpn_desk
+      - install -Dm644 packaging/vpn_desk.desktop /app/share/applications/io.vpndesk.VPNDesk.desktop
+    sources:
+      - type: dir
+        path: ../../build/linux/x64/release/bundle
