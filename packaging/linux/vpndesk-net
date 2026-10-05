@@ -104,8 +104,9 @@ TORRC
     chmod 644 "$DATA/torrc"
 
     # Rules first: until tor is up, traffic hits a closed port and fails (never goes direct).
-    rules_redirect || { echo "failed to load nftables rules" >&2; exit 4; }
+    # The state marker goes first, so a kill between the two steps can never leave rules without a marker.
     echo active > "$STATE/state"
+    rules_redirect || { echo "failed to load nftables rules" >&2; rules_clear; rm -f "$STATE/state"; exit 4; }
 
     cleanup() { pkill -u "$U" -x tor 2>/dev/null; rules_clear; rm -f "$STATE/state"; }
     trap 'cleanup; exit 0' TERM INT HUP

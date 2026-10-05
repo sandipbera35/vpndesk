@@ -4,11 +4,11 @@ import 'platform.dart';
 const _teal = Color(0xFF2DE2C4), _amber = Color(0xFFFFC857), _violet = Color(0xFF7C9CFF);
 
 /// Slide + fade + slight scale route for the About page.
-Route<void> aboutRoute(Widget windowDots) => PageRouteBuilder<void>(
+Route<void> aboutRoute(Widget windowDots, {VoidCallback? onUninstall}) => PageRouteBuilder<void>(
       transitionDuration: const Duration(milliseconds: 520),
       reverseTransitionDuration: const Duration(milliseconds: 320),
-      pageBuilder: (_, __, ___) => AboutPage(windowDots: windowDots),
-      transitionsBuilder: (_, anim, __, child) {
+      pageBuilder: (_, _, _) => AboutPage(windowDots: windowDots, onUninstall: onUninstall),
+      transitionsBuilder: (_, anim, _, child) {
         final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeIn);
         return FadeTransition(
           opacity: c,
@@ -21,8 +21,11 @@ Route<void> aboutRoute(Widget windowDots) => PageRouteBuilder<void>(
     );
 
 class AboutPage extends StatefulWidget {
-  const AboutPage({super.key, required this.windowDots});
+  const AboutPage({super.key, required this.windowDots, this.onUninstall});
   final Widget windowDots;
+
+  /// Null where uninstalling from the app is not supported (only Linux for now): the card is hidden.
+  final VoidCallback? onUninstall;
   @override
   State<AboutPage> createState() => _AboutPageState();
 }
@@ -57,7 +60,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
           child: Stack(children: [
             AnimatedBuilder(
               animation: _glow,
-              builder: (_, __) => Stack(children: [
+              builder: (_, _) => Stack(children: [
                 _blob(Alignment(-1 + 0.4 * _glow.value, -1), _teal, 560),
                 _blob(Alignment(1, 1 - 0.4 * _glow.value), const Color(0xFF7C5CFF), 600),
               ]),
@@ -95,6 +98,10 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                       _stagger(5, _section('Good to know', Icons.info_outline_rounded, _amber, _notes())),
                       const SizedBox(height: 18),
                       _stagger(6, _aiNote()),
+                      if (widget.onUninstall != null) ...[
+                        const SizedBox(height: 18),
+                        _stagger(7, _uninstallCard()),
+                      ],
                     ]),
                   ),
                 ),
@@ -126,7 +133,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
   Widget _header() => Column(children: [
         AnimatedBuilder(
           animation: _glow,
-          builder: (_, __) => Container(
+          builder: (_, _) => Container(
             width: 104, height: 104,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(26),
@@ -147,7 +154,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
         Wrap(spacing: 22, runSpacing: 18, crossAxisAlignment: WrapCrossAlignment.center, children: [
           AnimatedBuilder(
             animation: _glow,
-            builder: (_, __) => Container(
+            builder: (_, _) => Container(
               width: 96, height: 96,
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
@@ -160,7 +167,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                   'assets/profile.jpg',
                   fit: BoxFit.cover,
                   filterQuality: FilterQuality.high,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, _, _) => Container(
                     color: const Color(0xFF0E1830),
                     alignment: Alignment.center,
                     child: const Text('SB', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white)),
@@ -292,6 +299,32 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
       ]);
     });
   }
+
+  Widget _uninstallCard() => _glass(
+        glow: const Color(0xFFFF6B6B),
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: const Color(0xFFFF6B6B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(11)),
+            child: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFFF6B6B)),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Uninstall VPN Desk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              SizedBox(height: 6),
+              Text('Removes the app, its system helper and (if you choose) your settings from this computer. You will be asked to confirm.',
+                  style: TextStyle(color: Colors.white60, height: 1.45, fontSize: 13.5)),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: widget.onUninstall,
+            style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFF6B6B), side: BorderSide(color: const Color(0xFFFF6B6B).withValues(alpha: 0.6))),
+            child: const Text('Uninstall…'),
+          ),
+        ]),
+      );
 
   Widget _aiNote() => _glass(
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -8,8 +8,28 @@ BASE="https://dist.torproject.org/torbrowser/$VER"
 NAME="tor-expert-bundle-$OS-$ARCH-$VER.tar.gz"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 curl -fsSL "$BASE/$NAME" -o "$TMP/$NAME"
-# Verify against the published checksum list.
-curl -fsSL "$BASE/sha256sums-unsigned-build.txt" -o "$TMP/sums"
+# Verify the download. The checksum list is itself GPG-signed by the Tor Browser Developers; the signing key is
+# pinned by fingerprint, so a tampered mirror cannot swap both the file and its checksum.
+TOR_SIGNING_FPR="EF6E286DDA85EA2A4BA7DE684E2C6E8793298290"
+SUMS_FILE="sha256sums-signed-build.txt"
+verified=0
+if command -v gpg >/dev/null 2>&1; then
+  GNUPGHOME="$TMP/gnupg"; export GNUPGHOME; mkdir -m 700 "$GNUPGHOME"
+  if curl -fsSL "$BASE/$SUMS_FILE" -o "$TMP/sums" && curl -fsSL "$BASE/$SUMS_FILE.asc" -o "$TMP/sums.asc" \
+     && gpg --batch --quiet --auto-key-locate clear,wkd --locate-keys torbrowser@torproject.org >/dev/null 2>&1; then
+    # VALIDSIG's last field is the fingerprint of the signer's primary key: it must be the pinned one.
+    if gpg --batch --status-fd 1 --verify "$TMP/sums.asc" "$TMP/sums" 2>/dev/null | awk -v f="$TOR_SIGNING_FPR" '$2=="VALIDSIG" && $NF==f {ok=1} END {exit !ok}'; then
+      verified=1; echo "Signature OK (Tor Browser Developers, $TOR_SIGNING_FPR)"
+    else
+      echo "SIGNATURE VERIFICATION FAILED for $SUMS_FILE: refusing to use this download" >&2; exit 1
+    fi
+  fi
+fi
+if [ "$verified" != 1 ]; then
+  [ "${REQUIRE_SIGNATURE:-0}" = 1 ] && { echo "Could not verify the GPG signature and REQUIRE_SIGNATURE=1" >&2; exit 1; }
+  echo "WARNING: GPG signature not checked (gpg or the signing key unavailable); falling back to the unsigned checksum list." >&2
+  curl -fsSL "$BASE/sha256sums-unsigned-build.txt" -o "$TMP/sums"
+fi
 WANT="$(awk -v n="$NAME" '$2==n {print $1}' "$TMP/sums")"
 GOT="$( (sha256sum "$TMP/$NAME" 2>/dev/null || shasum -a 256 "$TMP/$NAME") | awk '{print $1}')"
 [ -n "$WANT" ] && [ "$WANT" = "$GOT" ] || { echo "Checksum mismatch for $NAME"; exit 1; }

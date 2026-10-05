@@ -62,7 +62,11 @@ void main() {
     await t.tap(find.textContaining('System-wide'));
     await t.pump(const Duration(seconds: 2));
     debugPrint('T system-wide dialog or info shown: ${has('Route the whole computer') || has('unavailable')}');
-    if (find.text('Cancel').evaluate().isNotEmpty) await t.tap(find.text('Cancel')); else if (find.text('OK').evaluate().isNotEmpty) await t.tap(find.text('OK'));
+    if (find.text('Cancel').evaluate().isNotEmpty) {
+      await t.tap(find.text('Cancel'));
+    } else if (find.text('OK').evaluate().isNotEmpty) {
+      await t.tap(find.text('OK'));
+    }
     await t.pump(const Duration(seconds: 1));
 
     for (var round = 1; round <= 2; round++) {
@@ -79,6 +83,14 @@ void main() {
 
       // Switch live to another location from the sidebar
       final tile = find.text(round == 1 ? 'Germany' : 'Netherlands');
+      if (tile.evaluate().isEmpty) {
+        // the sidebar is a lazy list: drag it until the tile is built (best effort)
+        try {
+          await t.dragUntilVisible(tile, find.byType(ListView).first, const Offset(0, -150), maxIteration: 60);
+        } catch (e) {
+          debugPrint('T r$round sidebar tile not reachable by dragging: $e');
+        }
+      }
       expect(tile, findsWidgets, reason: 'sidebar tile');
       await t.tap(tile.first);
       expect(await waitFor(t, () => has('Exit in ${round == 1 ? 'Germany' : 'Netherlands'}'), secs: 10), true, reason: 'switch label');

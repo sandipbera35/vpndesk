@@ -68,3 +68,14 @@ Everything lives in `lib/main.dart` (`VpnDeskApp` -> `HomePage` / `_HomePageStat
 - `integration_test/app_test.dart` drives the real app (`flutter test integration_test/app_test.dart -d linux`). Verified: dot hover, About, Auto, system-wide dialog, connect/disconnect x2. Known test gaps: sidebar tile lookup ('Germany') found 0 widgets after connecting (unresolved: tile text or layout in test view) so live country switch is untested; never use `pumpAndSettle` on About (repeating glow). Don't `pkill -f flutter_tester` from a command containing that string (kills your own shell).
 - NOT verified: system-wide mode live connect, macOS/Windows builds.
 - Pushed to main WITHOUT a version bump/tag on purpose (user: no release this time). Next release is still 1.0.6 -> bump when asked.
+
+## Session notes (2026-10-05, reliability + speed)
+
+- Reliability: see `docs/state-inventory.md`, `docs/plan.md`. Crash journal `lib/session.dart` -> `packaging/linux/vpndesk-restore` (also run on start, and as a detached `--watch` guard). All exit paths share `_teardown()` in `main.dart`. Verified live on the real app (`tool/crash_check.sh`) and live in system-wide mode with sudo (helper+tor SIGKILLed -> no internet -> `vpndesk-restore --net` restored it). Never reintroduce a blind `gsettings mode none` or `killall tor`.
+- Speed: benchmark harness `tool/bench/bench.dart` (`run`, `ab`); results + decisions in `docs/bench/DECISIONS.md`. Do not claim a speed-up without an interleaved A/B there. Connecting does not wait for Onionoo (`lib/onionoo.dart` cache); exit is `{cc}` + observed-IP pin.
+- A boot-time systemd unit (brief task 0.7) was NOT added: the safety classifier blocked it as persistence. Needs the user's explicit go-ahead.
+- Benchmarks use their own tor on 127.0.0.1:19050/19051, data in `~/.cache/vpndesk-bench`; never run system-wide tests while a benchmark runs (the nft redirect would capture its traffic).
+
+## Last git version (always keep current)
+
+- Last published release: **v1.0.7** (2026-10-05; v1.0.6 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.

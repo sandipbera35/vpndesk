@@ -16,12 +16,14 @@ rm -rf "$DIST" "$APP/.pkg"
 
 # ---- common staging ----
 STAGE="$APP/.pkg/root"
-mkdir -p "$STAGE/opt/vpn_desk" "$STAGE/usr/share/polkit-1/actions" \
+mkdir -p "$STAGE/opt/vpn_desk" "$STAGE/usr/bin" "$STAGE/usr/share/polkit-1/actions" \
          "$STAGE/usr/share/applications" "$STAGE/usr/share/metainfo" \
          "$STAGE/usr/share/icons/hicolor/512x512/apps"
 cp -r "$BUNDLE/"* "$STAGE/opt/vpn_desk/"
 # The Tor Expert Bundle ships 700/600 files; normal users must be able to read and run everything.
 chmod -R u+rwX,go+rX,go-w "$STAGE/opt/vpn_desk"
+# `vpndesk-restore` on PATH: the display-less "no internet after a crash" command
+ln -s /opt/vpn_desk/vpndesk-restore "$STAGE/usr/bin/vpndesk-restore"
 install -m 644 "$APP/packaging/linux/io.vpndesk.net.policy" "$STAGE/usr/share/polkit-1/actions/io.vpndesk.net.policy"
 cat > "$STAGE/usr/share/applications/io.vpndesk.VPNDesk.desktop" <<EOF
 [Desktop Entry]
@@ -105,6 +107,7 @@ tar xzf %{SOURCE0} -C %{buildroot}
 %files
 %defattr(-,root,root,-)
 /opt/vpn_desk
+/usr/bin/vpndesk-restore
 /usr/share/applications/io.vpndesk.VPNDesk.desktop
 /usr/share/metainfo/io.vpndesk.VPNDesk.metainfo.xml
 /usr/share/polkit-1/actions/io.vpndesk.net.policy

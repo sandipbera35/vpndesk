@@ -4,7 +4,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 for d in build/linux/x64/release/bundle build/linux/arm64/release/bundle; do
-  [ -d "$d" ] && install -m 755 packaging/linux/vpndesk-net "$d/vpndesk-net"
+  if [ -d "$d" ]; then
+    install -m 755 packaging/linux/vpndesk-net "$d/vpndesk-net"
+    install -m 755 packaging/linux/vpndesk-restore "$d/vpndesk-restore"
+    install -m 755 packaging/linux/vpndesk-uninstall "$d/vpndesk-uninstall"
+  fi
 done
 case "$(uname -m)" in
   x86_64) A=x86_64; B=x64 ;;

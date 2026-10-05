@@ -1,12 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' show FontFeature;
+import 'dart:ui' show AppExitResponse, FontFeature;
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:socks5_proxy/socks_client.dart';
 import 'about_page.dart';
+import 'estimator.dart';
+import 'onionoo.dart';
 import 'platform.dart';
+import 'session.dart';
+import 'torrc.dart';
+import 'uninstall.dart';
+import 'uninstall_page.dart';
 import 'world_map.dart';
 
 void main() {
@@ -39,7 +45,6 @@ class VpnDeskApp extends StatelessWidget {
         title: 'VPN Desk',
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
-          useMaterial3: true,
           scaffoldBackgroundColor: const Color(0xFF0B1220),
           cardTheme: CardThemeData(
             color: const Color(0xFF16233A),
@@ -87,10 +92,28 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   void initState() {
     super.initState();
     _loadSettings();
-    _netBlocked = Plat.linux && Plat.netState() != 'none';
-    _loadRealIp();
-    _loadSpeed();
-    _loadCountryStats();
+    // Undo what a previous run that was killed left behind *before* any network lookups.
+    _recoverOnStart().whenComplete(() {
+      if (!mounted) return;
+      _netBlocked = Plat.linux && Plat.netState() != 'none';
+      _loadRealIp();
+      _loadSpeed();
+      _loadCountryStats();
+    });
+    _exitListener = AppLifecycleListener(onExitRequested: () async {
+      await _teardown();
+      return AppExitResponse.exit;
+    });
+    if (!Plat.win) {
+      for (final sig in [ProcessSignal.sigterm, ProcessSignal.sigint, ProcessSignal.sighup]) {
+        _sigSubs.add(sig.watch().listen((_) => _quit()));
+      }
+    }
+    _startTimers();
+    _dotCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  }
+
+  void _startTimers() {
     _statsTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       _loadCountryStats();
       if (running && !_loadingSpeed) _loadSpeed();
@@ -98,7 +121,46 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     });
     _realTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (!running && !connecting) _loadRealIp(); });
     _timer = Timer.periodic(const Duration(seconds: 20), (_) { _refreshStatus(); if (running && !_loadingExit && !_switching) _loadExitIp(silent: true); });
-    _dotCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  }
+
+  void _stopTimers() {
+    _timer?.cancel();
+    _realTimer?.cancel();
+    _statsTimer?.cancel();
+  }
+
+  // ---- Uninstall (Linux) ----
+
+  /// Ask, then run the uninstall page. `VPNDESK_UNINSTALL_DRYRUN=1` previews the whole flow and removes nothing.
+  Future<void> _beginUninstall() async {
+    final dry = Platform.environment['VPNDESK_UNINSTALL_DRYRUN'] == '1';
+    UninstallPlan planFor(bool data) => UninstallPlan.detect(exe: Platform.resolvedExecutable, env: Platform.environment, deleteData: data);
+    final deleteData = await showUninstallConfirm(context, planFor: planFor, dryRun: dry);
+    if (deleteData == null || !mounted) return;
+    final plan = planFor(deleteData);
+    final up = Uninstaller(
+      plan: plan,
+      dryRun: dry,
+      prepare: () async {
+        // Stop everything that could touch the machine or re-create files, then undo what the app changed.
+        _stopTimers();
+        Plat.frozen = true;
+        Session.frozen = true;
+        await _teardown();
+        await Plat.runRestore();
+        Session.end();
+      },
+    );
+    void back() {
+      // Cancelled or failed: resume normal operation.
+      Plat.frozen = false;
+      Session.frozen = false;
+      if (_statsTimer?.isActive != true) _startTimers();
+      setState(() { running = false; connecting = false; exitIp = '—'; _exitLL = null; }); // we disconnected before asking
+      _loadRealIp();
+      Navigator.of(context).pop();
+    }
+    await Navigator.of(context).push(uninstallRoute(plan: plan, start: up.run, onBack: back, onExit: () => exit(0), dryRun: dry));
   }
 
   // The pulse only matters while connecting/connected; an idle repeating ticker would repaint (and burn CPU) forever.
@@ -121,13 +183,67 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _realTimer?.cancel();
     _statsTimer?.cancel();
     _dotCtrl.dispose();
-    if (_sysActive) {
-      Plat.controlSend(_ctlPass, ['SIGNAL HALT']); // helper then restores networking
-    } else {
-      _tor?.kill();
-    }
-    _setSystemProxy(false);
+    _exitListener?.dispose();
+    for (final s in _sigSubs) { s.cancel(); }
+    _teardown(); // not awaitable here; the watchdog + next-start recovery cover a hard exit
     super.dispose();
+  }
+
+  AppLifecycleListener? _exitListener;
+  final List<StreamSubscription<ProcessSignal>> _sigSubs = [];
+  String? _recoveryNote; // shown as a banner after an unclean previous exit
+  bool _recoveryFailed = false;
+
+  /// Undo what an earlier, killed run left behind (proxy, orphaned tor, firewall) via `vpndesk-restore`.
+  Future<void> _recoverOnStart() async {
+    if (!Plat.linux) return;
+    final rc = await Plat.runRestore();
+    if (!mounted || rc == null || rc == 0) return;
+    setState(() {
+      _recoveryFailed = rc != 10;
+      _recoveryNote = rc == 10
+          ? 'Recovered from an unclean exit: your previous network settings were restored.'
+          : 'The last session did not exit cleanly and some settings could not be restored. Run  vpndesk-restore  in a terminal.';
+    });
+  }
+
+  Future<void>? _teardownRun;
+
+  /// Undo everything this session changed (tor, proxy, firewall) and delete the crash journal.
+  /// Idempotent: every exit path (Disconnect, signals, window close, dispose) shares one run.
+  Future<void> _teardown() => _teardownRun ??= _doTeardown().whenComplete(() => _teardownRun = null);
+
+  Future<void> _doTeardown() async {
+    var clean = true;
+    final tor = _tor;
+    try {
+      if (_sysActive) {
+        // tor runs as another user behind pkexec: ask it to exit cleanly (HALT); the helper then removes
+        // the firewall rules. Fall back to the helper's `stop` if the control port is gone or it hangs.
+        final r = await Plat.controlSend(_ctlPass, ['SIGNAL HALT']);
+        var done = r != null && r.contains('250');
+        if (done && tor != null) {
+          await tor.exitCode.timeout(const Duration(seconds: 10), onTimeout: () { done = false; return 0; });
+        }
+        if (!done || Plat.netState() != 'none') clean = await Plat.restoreNetwork();
+        _sysActive = false;
+      } else if (tor != null) {
+        tor.kill();
+        await tor.exitCode.timeout(const Duration(seconds: 3), onTimeout: () { tor.kill(ProcessSignal.sigkill); return 0; });
+      }
+      _tor = null;
+      _dropTorClient();
+      await Plat.setSystemProxy(false);
+    } catch (_) {
+      clean = false;
+    }
+    if (clean) Session.end(); // otherwise keep it: the next start / watchdog finishes the job
+  }
+
+  /// Quit the app (signal or close button): restore the system first, then exit. Never hangs forever.
+  Future<void> _quit() async {
+    await _teardown().timeout(const Duration(seconds: 25), onTimeout: () {});
+    exit(0);
   }
 
   // Running state is tracked from our own child process (no pgrep).
@@ -135,20 +251,58 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     if (mounted && _tor == null && running) setState(() => running = false);
   }
 
+  // One keep-alive client for the app's own requests through Tor (IP lookups, geolocation, Onionoo): connections
+  // to the same host are reused instead of paying SOCKS + TLS setup over a 3-hop circuit each time.
+  // Dropped whenever the Tor session ends so no stale socket survives a reconnect.
+  HttpClient? _torClient;
+  HttpClient _sharedTorClient() {
+    final c = _torClient ??= HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..idleTimeout = const Duration(seconds: 60);
+    SocksTCPClient.assignToHttpClient(c, [ProxySettings(InternetAddress.loopbackIPv4, 9050)]);
+    return c;
+  }
+
+  void _dropTorClient() {
+    _torClient?.close(force: true);
+    _torClient = null;
+  }
+
   /// Plain HTTP GET, optionally through Tor's SOCKS5 proxy (no curl needed).
   Future<String> _get(String url, {bool viaTor = false, int timeout = 20}) async {
-    final client = HttpClient()..connectionTimeout = Duration(seconds: timeout);
+    final client = viaTor ? _sharedTorClient() : (HttpClient()..connectionTimeout = Duration(seconds: timeout));
     try {
-      if (viaTor) {
-        SocksTCPClient.assignToHttpClient(client, [ProxySettings(InternetAddress.loopbackIPv4, 9050)]);
-      }
       final req = await client.getUrl(Uri.parse(url)).timeout(Duration(seconds: timeout));
       final res = await req.close().timeout(Duration(seconds: timeout));
       return await res.transform(utf8.decoder).join().timeout(Duration(seconds: timeout));
     } finally {
-      client.close(force: true);
+      if (!viaTor) client.close(force: true);
     }
   }
+
+  /// GET returning status/body/headers (for conditional requests), optionally through Tor's SOCKS5 proxy.
+  Future<({int status, String body, Map<String, String> headers})> _getFull(String url, Map<String, String> reqHeaders,
+      {bool viaTor = false, int timeout = 20}) async {
+    final client = viaTor ? _sharedTorClient() : (HttpClient()..connectionTimeout = Duration(seconds: timeout));
+    try {
+      final req = await client.getUrl(Uri.parse(url)).timeout(Duration(seconds: timeout));
+      reqHeaders.forEach(req.headers.set);
+      final res = await req.close().timeout(Duration(seconds: timeout));
+      final body = await res.transform(utf8.decoder).join().timeout(Duration(seconds: timeout * 2));
+      final h = <String, String>{};
+      res.headers.forEach((k, v) => h[k.toLowerCase()] = v.join(', '));
+      return (status: res.statusCode, body: body, headers: h);
+    } finally {
+      if (!viaTor) client.close(force: true);
+    }
+  }
+
+  /// Onionoo answers are cached on disk (30 min TTL, conditional requests after that), so reconnecting and the
+  /// periodic refresh do not re-download the relay list, and connecting never has to wait for it.
+  late final OnionooCache _onionoo = OnionooCache(
+    dir: Directory('${_cfgDir.path}/onionoo'),
+    fetch: (url, h) => _getFull(url, h, viaTor: running && _tor != null, timeout: 40),
+  );
 
   static final _ipRe = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
 
@@ -318,12 +472,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String? _pinnedIp;
   Map<String, double> _estMbps = {};
   bool _statsFailed = false, _statsBusy = false;
-  Map<String, String> _exitFp = {}; // best exit relay fingerprint per country (instant switching)
   Map<String, double> _rttMs = {};  // live ping per country (ms)
   DateTime? _statsAt;
 
   Set<String> _noExits = {};
-  Map<String, double> _measured = {};
+  Map<String, double> _measured = {}; // smoothed (EWMA) live measurements, fresh ones only
+  final Smoothed _measuredS = Smoothed(alpha: 0.4, maxAge: const Duration(hours: 1));
+  final Smoothed _rttS = Smoothed(alpha: 0.4, maxAge: const Duration(hours: 1));
+  final Smoothed _kS = Smoothed(alpha: 0.3, maxAge: const Duration(hours: 24)); // throughput x RTT calibration
+  final Map<String, DateTime> _rttProbedAt = {};
+  final AutoSwitch _autoRule = AutoSwitch();
 
   // Auto-fastest: keep the app on the location with the highest (measured, else estimated) speed.
   bool _autoFastest = false;
@@ -335,11 +493,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       final m = jsonDecode(_settingsFile.readAsStringSync()) as Map;
       _autoFastest = m['autoFastest'] == true;
       _systemWide = m['systemWide'] == true && Plat.systemWideProblem() == null;
+      final last = m['country'];
+      if (last is String && countries.containsKey(last)) selectedCountry = last; // last used location
     } catch (_) {}
   }
 
   void _saveSettings() {
-    try { _settingsFile.writeAsStringSync(jsonEncode({'autoFastest': _autoFastest, 'systemWide': _systemWide})); } catch (_) {}
+    try { _settingsFile.writeAsStringSync(jsonEncode({'autoFastest': _autoFastest, 'systemWide': _systemWide, 'country': selectedCountry})); } catch (_) {}
   }
 
   void _setAuto(bool on) {
@@ -409,6 +569,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final ok = await Plat.restoreNetwork();
     if (!mounted) return;
     if (ok) {
+      Session.end();
       setState(() => _netBlocked = false);
       _loadRealIp();
     } else {
@@ -438,23 +599,30 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return best;
   }
 
-  /// Disconnected: just pre-select the fastest. Connected: switch only if clearly faster
-  /// (25% margin) and not within 5 minutes of the last switch, so it doesn't flap.
+  /// Disconnected: just pre-select the fastest. Connected: switch only if clearly faster (25% margin), not within
+  /// 5 minutes of the last switch, and comparing like with like (smoothed measurements, or estimates for both).
   Future<void> _autoSwitch({bool force = false}) async {
     if (!_autoFastest || connecting || !mounted) return;
-    final best = _bestCountry();
-    if (best == null || best == selectedCountry) return;
     if (!running) {
+      final best = _bestCountry();
+      if (best == null || best == selectedCountry) return;
       setState(() => selectedCountry = best);
       _countryCtrl?.text = countries[best]!;
       return;
     }
-    final cooled = DateTime.now().difference(_lastAutoSwitch) > const Duration(minutes: 5);
-    if ((cooled || force) && _speedOf(best) > _speedOf(selectedCountry) * 1.25) {
-      _lastAutoSwitch = DateTime.now();
-      setState(() => log += 'Auto-fastest: switching to ${countries[best]} (~${_speedOf(best).toStringAsFixed(1)} Mbps)\n');
-      await _selectCountry(best);
-    }
+    final best = _autoRule.pick(
+      current: selectedCountry,
+      candidates: countries.keys.where((c) => !_noExits.contains(c)),
+      measured: (c) => _measured[c],
+      estimate: (c) => _estMbps[c],
+      now: DateTime.now(),
+      lastSwitch: _lastAutoSwitch,
+      force: force,
+    );
+    if (best == null) return;
+    _lastAutoSwitch = DateTime.now();
+    setState(() => log += 'Auto-fastest: switching to ${countries[best]} (~${_speedOf(best).toStringAsFixed(1)} Mbps)\n');
+    await _selectCountry(best);
   }
 
   File get _measuredFile => File('${_cfgDir.path}/measured.json');
@@ -462,13 +630,29 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   void _loadMeasured() {
     try {
       final m = jsonDecode(_measuredFile.readAsStringSync()) as Map<String, dynamic>;
-      _measured = {for (final e in m.entries) e.key: (e.value as num).toDouble()};
+      if (m['v'] == 2) {
+        _measuredS.load(m['measured'], DateTime.now());
+        _kS.load(m['k'], DateTime.now());
+      } // the old format (plain country -> Mbps, no timestamps) is dropped: it could be days old
     } catch (_) {}
+    _syncMeasured();
+  }
+
+  void _syncMeasured() {
+    final now = DateTime.now();
+    _measured = {
+      for (final c in countries.keys)
+        if (_measuredS.value(c, now) != null) c: _measuredS.value(c, now)!
+    };
   }
 
   void _saveMeasured(String cc, double mbps) {
-    _measured[cc] = mbps;
-    try { _measuredFile.writeAsStringSync(jsonEncode(_measured)); } catch (_) {}
+    final now = DateTime.now();
+    _measuredS.add(cc, mbps, now);
+    final rtt = _rttMs[cc];
+    if (rtt != null) _kS.add('k', mbps * rtt, now);
+    _syncMeasured();
+    try { _measuredFile.writeAsStringSync(jsonEncode({'v': 2, 'measured': _measuredS.toJson(), 'k': _kS.toJson()})); } catch (_) {}
   }
 
   /// TCP connect time to a relay's OR port (direct, no Tor) in ms, or null if unreachable.
@@ -494,10 +678,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _statsBusy = true;
     _loadMeasured();
     try {
-      final out = await _get(
-          'https://onionoo.torproject.org/details?flag=Exit&running=true&fields=country,observed_bandwidth,or_addresses,flags,fingerprint&limit=3000&order=-consensus_weight',
-          viaTor: running && _tor != null,
-          timeout: 40);
+      final out = await _onionoo.get('details?flag=Exit&running=true&fields=country,observed_bandwidth,or_addresses,flags,fingerprint&limit=3000&order=-consensus_weight');
+      if (out == null) throw 'no relay data';
       final top = <String, List<Map<String, dynamic>>>{};
       for (final r in (jsonDecode(out)['relays'] as List).cast<Map<String, dynamic>>()) {
         final cc = r['country'] as String?;
@@ -506,42 +688,46 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         if (l.length < 3) l.add(r);
       }
       final est = <String, double>{}, rtts = <String, double>{};
+      final now = DateTime.now();
+      // Probe the selected country and the current top few every minute; the rest only every 10 minutes
+      // (each probe is a direct connection to a relay, so probing every country every minute was needless load).
+      final ranked = countries.keys.where((c) => !_noExits.contains(c)).toList()..sort((a, b) => _speedOf(b).compareTo(_speedOf(a)));
+      final hot = {selectedCountry, ...ranked.take(5)};
       await Future.wait(countries.keys.where(top.containsKey).map((cc) async {
-        double? rtt;
+        final due = !_rttMs.containsKey(cc) || hot.contains(cc) || now.difference(_rttProbedAt[cc] ?? DateTime.fromMillisecondsSinceEpoch(0)) > const Duration(minutes: 10);
         // While connected, direct probes would reveal the real IP to relays: reuse the last RTT.
-        if (running) rtt = _rttMs[cc];
-        for (final r in running ? const <Map<String, dynamic>>[] : top[cc]!) {
-          final v4 = (r['or_addresses'] as List).cast<String>().where((a) => !a.startsWith('[')).toList();
-          if (v4.isEmpty) continue;
-          final t = await _rtt(v4.first);
-          if (t != null && (rtt == null || t < rtt)) rtt = t;
+        if (!running && due) {
+          double? best;
+          for (final r in top[cc]!) {
+            final v4 = (r['or_addresses'] as List).cast<String>().where((a) => !a.startsWith('[')).toList();
+            if (v4.isEmpty) continue;
+            final t = await _rtt(v4.first);
+            if (t != null && (best == null || t < best)) best = t;
+          }
+          if (best != null) { _rttS.add(cc, best, now); _rttProbedAt[cc] = now; }
         }
+        final rtt = _rttS.value(cc, now) ?? _rttMs[cc]; // smoothed; last known if the samples aged out while connected
         if (rtt != null) rtts[cc] = rtt;
         final bwMbps = ((top[cc]!.first['observed_bandwidth'] as num?) ?? 0) * 8 / 1e6;
         est[cc] = bwMbps * 0.04; // relay-bandwidth cap; combined with live RTT below
       }));
-      // Throughput ~ k / RTT. Derive k live from this machine's real Tor measurements
-      // (median of mbps*rtt); until one exists, fall back to 400 (seed from one old sample).
-      final ks = [
-        for (final e in _measured.entries)
-          if (rtts.containsKey(e.key)) e.value * rtts[e.key]!
-      ]..sort();
-      final k = ks.isEmpty ? 400.0 : ks[ks.length ~/ 2];
+      // Throughput ~ k / RTT. k is a smoothed calibration from this machine's real Tor measurements
+      // (mbps x rtt); until one exists, fall back to 400 (seed from one old sample).
+      final k = _kS.value('k', now) ?? 400.0;
       for (final cc in est.keys.toList()) {
         final byDistance = rtts.containsKey(cc) ? k / rtts[cc]! : 1.0;
         est[cc] = (byDistance < est[cc]! ? byDistance : est[cc]!).clamp(0.2, 100.0);
       }
-      if (mounted) setState(() {
+      _syncMeasured();
+      if (mounted) {
+        setState(() {
         _estMbps = est;
         _rttMs = rtts;
-        _exitFp = {
-          for (final e in top.entries)
-            if (e.value.isNotEmpty && e.value.first['fingerprint'] != null) e.key: e.value.first['fingerprint'] as String
-        };
         _statsAt = DateTime.now();
         _statsFailed = false;
         _noExits = countries.keys.where((c) => !top.containsKey(c)).toSet();
       });
+      }
       _autoSwitch();
     } catch (_) {
       if (mounted) setState(() => _statsFailed = true);
@@ -572,15 +758,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _countryCtrl?.text = countries[cc]!;
     bool stale() => !mounted || _tor == null || gen != _switchGen;
     try {
-      // Use the relay cached by the last stats refresh; only ask Onionoo if we have none yet.
-      var fp = _exitFp[cc];
-      if (fp == null) {
-        final exits = await _topRelays('flag=Exit&country=$cc', 1);
-        if (stale()) return;
-        fp = exits.isEmpty ? null : exits.first;
-      }
-      _pinnedIp = fp ?? 'pending'; // non-null: don't re-pin to the old exit
-      await _applyExit(fp == null ? '{$cc}' : '\$$fp');
+      // Whole country, strict. 'pending' stops the lookup from pinning the OLD exit while the switch is in flight.
+      _pinnedIp = 'pending';
+      await _applyExit('{$cc}');
       // Poll a tiny IP-only endpoint through Tor until the exit actually changes, then show it at once;
       // the full lookup (country, location pin) follows.
       for (var i = 0; i < 10 && !stale(); i++) {
@@ -590,6 +770,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           final ip = (await _get('https://api.ipify.org', viaTor: true, timeout: 8)).trim();
           if (_ipRe.hasMatch(ip) && ip != oldIp) {
             if (!stale()) setState(() => exitIp = '$ip — ${countries[cc]}');
+            _pinnedIp = null; // the exit really changed: now it is safe to pin the new relay
             break;
           }
         } catch (_) {}
@@ -673,21 +854,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String _entryNodes = '';
 
   void _writeTorrc(String exitNodes) {
-    File(_torrcPath).writeAsStringSync(
-        'SocksPort 9050 NoIsolateSOCKSAuth NoIsolateClientAuth NoIsolateClientProtocol NoIsolateDestPort NoIsolateDestAddr\n'
-        'DataDirectory ${Plat.torPath(_cfgDir.path)}/data\nExitNodes $exitNodes\nStrictNodes 1\n'
-        '${Plat.geoipLines()}${Plat.controlLines('${_cfgDir.path}/data')}'
-        '${_entryNodes.isEmpty ? '' : 'EntryNodes $_entryNodes\n'}'
-        'MaxCircuitDirtiness 86400\nNewCircuitPeriod 86400\n__OwningControllerProcess $pid\n');
+    File(_torrcPath).writeAsStringSync(buildTorrc(
+      dataDir: Plat.torPath(_cfgDir.path),
+      exitNodes: exitNodes,
+      geoipLines: Plat.geoipLines(),
+      controlLines: Plat.controlLines('${_cfgDir.path}/data'),
+      entryNodes: _entryNodes,
+      ownerPid: pid,
+    ));
   }
 
-  /// Ask Onionoo for the highest-bandwidth relays so the single shared circuit is as fast as possible.
-  Future<List<String>> _topRelays(String filter, int limit) async {
+  String _relayPath(String filter, int limit) =>
+      'details?running=true&order=-consensus_weight&limit=${limit + 4}&fields=fingerprint,flags&$filter';
+
+  List<String> _parseRelays(String? out, int limit) {
+    if (out == null) return [];
     try {
-      final out = await _get(
-          'https://onionoo.torproject.org/details?running=true&order=-consensus_weight&limit=${limit + 4}&fields=fingerprint,flags&$filter',
-          viaTor: running && _tor != null, // never query from the real IP while connected
-          timeout: 25);
       final relays = (jsonDecode(out)['relays'] as List).cast<Map<String, dynamic>>();
       return [
         for (final r in relays)
@@ -698,7 +880,27 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
+  /// Highest-bandwidth relays so the single shared circuit is as fast as possible. Cached on disk;
+  /// [cacheOnly] never touches the network (used so that connecting does not wait for Onionoo).
+  Future<List<String>> _topRelays(String filter, int limit, {bool cacheOnly = false}) async {
+    final path = _relayPath(filter, limit);
+    if (cacheOnly) return _parseRelays(_onionoo.peek(path, maxStale: const Duration(hours: 24)), limit);
+    return _parseRelays(await _onionoo.get(path), limit);
+  }
+
   /// Pin to the exit relay we just saw so every app shows the same IP.
+  int _bootPct = 0; // real progress from tor's "Bootstrapped N%" lines
+  static final _bootRe = RegExp(r'Bootstrapped (\d+)%');
+  void _trackBootstrap(String s) {
+    final m = _bootRe.allMatches(s);
+    if (m.isNotEmpty) _bootPct = int.parse(m.last.group(1)!);
+  }
+
+  /// After connecting: refresh the relay lists in the background (through Tor) so the next connect has fresh guards.
+  Future<void> _warmRelayCache() async {
+    await _topRelays('flag=Guard', 12);
+  }
+
   void _pinExit(String ip) {
     if (_pinnedIp != null || _tor == null || !RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(ip)) return;
     _pinnedIp = ip;
@@ -732,16 +934,25 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       setState(() => log = '${countries[selectedCountry]} has no Tor exit relays - pick another location.\n');
       return;
     }
-    setState(() { connecting = true; log = ''; });
+    setState(() { connecting = true; log = ''; _bootPct = 0; });
+    _saveSettings(); // remember the location for next launch
+    if (Plat.linux) {
+      // Journal first, before anything on the system is touched; the watchdog repairs it if we get killed.
+      Session.begin(_systemWide && Plat.systemWideProblem() == null ? 'system-wide' : 'default');
+      Plat.startWatchdog();
+    }
     // An orphaned tor from a previous app run (e.g. killed with pkill) would hold port 9050.
     await Plat.killStaleTor();
+    _dropTorClient();
     _pinnedIp = null;
-    setState(() => log += 'Finding fastest relays…\n');
-    final exits = await _topRelays('flag=Exit&country=$selectedCountry', 1);
-    final guards = await _topRelays('flag=Guard', 12);
+    // Connecting must not wait for Onionoo: guards come from the disk cache, and the exit is the whole country
+    // (still StrictNodes 1). Benchmarks showed no speed difference against pinning the single top relay
+    // (docs/bench/DECISIONS.md), and not pinning avoids sending every user to the same volunteer relay. Once the
+    // exit IP is seen, _pinExit keeps that relay so every app shows one stable IP.
+    final guards = await _topRelays('flag=Guard', 12, cacheOnly: true);
     _entryNodes = guards.map((f) => '\$$f').join(',');
-    if (exits.isNotEmpty) _pinnedIp = exits.first; // already pinned to one exit
-    final exitNodes = exits.isEmpty ? '{$selectedCountry}' : '\$${exits.first}';
+    final exitNodes = '{$selectedCountry}';
+    setState(() => log += 'Connecting (any exit in ${countries[selectedCountry]})…\n');
     if (_systemWide && Plat.systemWideProblem() == null) {
       await _startSystemWide(exitNodes);
       return;
@@ -754,6 +965,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         if (!mounted) return;
         setState(() {
           log += s;
+          _trackBootstrap(s);
           if (s.contains('Bootstrapped 100%')) {
             connecting = false;
             running = true;
@@ -761,18 +973,25 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             _loadExitIp();
             _loadSpeed();
             _loadRealIp();
+            _warmRelayCache();
           }
         });
       });
       _tor!.stderr.transform(SystemEncoding().decoder).listen((s) {
         if (mounted) setState(() => log += s);
       });
-      _tor!.exitCode.then((_) {
+      final proc = _tor!;
+      proc.exitCode.then((_) async {
+        if (!identical(_tor, proc)) return; // a newer connection already replaced this one
         _tor = null;
-        _setSystemProxy(false);
+        _dropTorClient();
+        await _setSystemProxy(false);
+        Session.end();
         if (mounted) setState(() { running = false; connecting = false; });
       });
     } catch (e) {
+      await _setSystemProxy(false);
+      Session.end();
       setState(() { log = 'Failed to start tor: $e\n'; connecting = false; });
     }
   }
@@ -782,6 +1001,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _ctlPass = Plat.randomHex(16);
     final hash = await Plat.hashPassword(_ctlPass);
     if (hash == null) {
+      Session.end();
       setState(() { log += 'Could not prepare the Tor control password.\n'; connecting = false; });
       return;
     }
@@ -797,12 +1017,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         if (!mounted) return;
         setState(() {
           log += s;
+          _trackBootstrap(s);
           if (s.contains('VPNDESK_BLOCKED')) _netBlocked = true;
           if (s.contains('Bootstrapped 100%')) {
             connecting = false;
             running = true;
             _loadExitIp();
             _loadSpeed();
+            _warmRelayCache();
           }
         });
       });
@@ -810,8 +1032,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         if (mounted) setState(() => log += s);
       });
       p.exitCode.then((code) {
+        if (!identical(_tor, p)) return;
         _tor = null;
         _sysActive = false;
+        // Blocked = fail-closed table still installed on purpose: keep the journal so recovery can lift it.
+        if (Plat.netState() == 'none') Session.end();
         if (!mounted) return;
         setState(() {
           if (code == 126 || code == 127) log += 'Administrator permission was not granted — system-wide mode not started.\n';
@@ -821,27 +1046,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         });
       });
     } catch (e) {
+      Session.end();
       setState(() { log += 'Failed to start system-wide mode: $e\n'; connecting = false; _sysActive = false; });
     }
   }
 
   Future<void> _stop() async {
-    if (_sysActive) {
-      // tor runs as another user behind pkexec: ask it to exit cleanly (HALT); the helper then
-      // removes the firewall rules. Fall back to the helper's `stop` if the control port is gone.
-      final r = await Plat.controlSend(_ctlPass, ['SIGNAL HALT']);
-      if (r == null || !r.contains('250')) await Plat.restoreNetwork();
-      _tor = null;
-      _sysActive = false;
-      setState(() { running = false; connecting = false; exitIp = '—'; _exitLL = null; log += '\nStopped. Normal networking restored.\n'; });
-      _loadRealIp();
-      _loadSpeed();
-      return;
-    }
-    _tor?.kill();
-    _tor = null;
-    await _setSystemProxy(false);
-    setState(() { running = false; connecting = false; exitIp = '—'; _exitLL = null; log += '\nStopped.\n'; });
+    final wasSys = _sysActive;
+    await _teardown();
+    if (!mounted) return;
+    setState(() { running = false; connecting = false; exitIp = '—'; _exitLL = null; log += wasSys ? '\nStopped. Normal networking restored.\n' : '\nStopped.\n'; });
+    if (wasSys) _loadRealIp();
     _loadSpeed();
   }
 
@@ -919,7 +1134,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final color = running ? _teal : (connecting ? _amber : const Color(0xFF64748B));
     return AnimatedBuilder(
       animation: _dotCtrl,
-      builder: (_, __) {
+      builder: (_, _) {
         final pulse = (running || connecting) ? _dotCtrl.value : 0.0;
         return SizedBox(
           width: 64, height: 64,
@@ -1030,9 +1245,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final on = _systemWide && problem == null;
     final color = on ? _teal : Colors.white54;
     return Tooltip(
-      message: problem != null
-          ? problem
-          : (locked ? 'Disconnect to change this' : 'Send all apps\' traffic through Tor (asks for administrator permission)'),
+      message: problem ?? (locked ? 'Disconnect to change this' : 'Send all apps\' traffic through Tor (asks for administrator permission)'),
       child: MouseRegion(
         cursor: locked ? SystemMouseCursors.basic : SystemMouseCursors.click,
         child: GestureDetector(
@@ -1058,6 +1271,27 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _recoveryBanner() {
+    final c = _recoveryFailed ? _amber : _teal;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: c.withValues(alpha: 0.10),
+          border: Border.all(color: c.withValues(alpha: 0.5)),
+        ),
+        child: Row(children: [
+          Icon(_recoveryFailed ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded, color: c),
+          const SizedBox(width: 12),
+          Expanded(child: Text(_recoveryNote!, style: const TextStyle(fontSize: 13, height: 1.35))),
+          IconButton(icon: const Icon(Icons.close_rounded, size: 18), onPressed: () => setState(() => _recoveryNote = null)),
+        ]),
       ),
     );
   }
@@ -1090,7 +1324,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Widget _hero(double width) {
     final title = connecting ? 'Connecting…' : (running ? 'Protected' : 'Not protected');
-    final sub = _switching ? 'Switching location — traffic stays inside Tor' : running ? '${_sysActive ? 'System-wide · ' : ''}${_autoFastest ? 'Auto-fastest · ' : ''}Exit in ${countries[selectedCountry]} · SOCKS5 127.0.0.1:9050' : (connecting ? 'Building a Tor circuit' : 'Pick a country and connect');
+    final sub = _switching ? 'Switching location — traffic stays inside Tor' : running ? '${_sysActive ? 'System-wide · ' : ''}${_autoFastest ? 'Auto-fastest · ' : ''}Exit in ${countries[selectedCountry]} · SOCKS5 127.0.0.1:9050' : (connecting ? (_bootPct > 0 ? 'Building a Tor circuit · $_bootPct%' : 'Starting Tor…') : 'Pick a country and connect');
     final head = Row(children: [
       _statusOrb(),
       const SizedBox(width: 14),
@@ -1141,6 +1375,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final compact = width < 640 || height < 640;
     final (_, speedDetail) = _split(speed);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_recoveryNote != null) _recoveryBanner(),
       if (_netBlocked && !connecting && !running) _blockedBanner(),
       _hero(width),
       const SizedBox(height: 14),
@@ -1157,7 +1392,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _windowDots() => Row(children: [
-        _winDot(const Color(0xFFFF5F57), () => appWindow.close()),
+        _winDot(const Color(0xFFFF5F57), _quit),
         _winDot(const Color(0xFFFEBC2E), () => appWindow.minimize()),
         _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
       ]);
@@ -1165,7 +1400,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _aboutButton() => Tooltip(
         message: 'About VPN Desk',
         child: TextButton.icon(
-          onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots())),
+          onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: Plat.linux ? _beginUninstall : null)),
           style: TextButton.styleFrom(foregroundColor: Colors.white70, backgroundColor: Colors.white.withValues(alpha: 0.06), shape: const StadiumBorder()),
           icon: const Icon(Icons.info_outline_rounded, size: 16),
           label: const Text('About'),
@@ -1198,7 +1433,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: Row(children: [
-                  _winDot(const Color(0xFFFF5F57), () => appWindow.close()),
+                  _winDot(const Color(0xFFFF5F57), _quit),
                   _winDot(const Color(0xFFFEBC2E), () => appWindow.minimize()),
                   _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
                   const SizedBox(width: 16),
@@ -1372,7 +1607,7 @@ class _CountryTileState extends State<_CountryTile> {
                       tween: Tween(begin: 0, end: frac),
                       duration: const Duration(milliseconds: 700),
                       curve: Curves.easeOutCubic,
-                      builder: (_, v, __) => LinearProgressIndicator(value: v, minHeight: 4, backgroundColor: Colors.white12, color: barColor),
+                      builder: (_, v, _) => LinearProgressIndicator(value: v, minHeight: 4, backgroundColor: Colors.white12, color: barColor),
                     ),
                   ),
                 ]),

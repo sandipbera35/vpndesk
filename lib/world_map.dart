@@ -101,7 +101,7 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
             RepaintBoundary(
               child: AnimatedBuilder(
                 animation: Listenable.merge([_loop, _dropReal, _dropExit]),
-                builder: (_, __) => CustomPaint(
+                builder: (_, _) => CustomPaint(
                   painter: _MapPainter(
                     base: false,
                     countries: _countries,

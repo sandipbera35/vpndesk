@@ -131,6 +131,49 @@ It works the same on GNOME, KDE and any other Linux desktop because it uses the 
 
 ---
 
+## 🗑️ Uninstall
+
+Open **About** and press **Uninstall…** (Linux). VPN Desk asks you to confirm, disconnects and restores your network, then removes itself: the app and menu entry, the system-wide helper with its firewall table and the `vpndesk` system user, and (if you leave the box ticked) your settings in `~/.config/vpn_desk`. You are asked for administrator permission once; if you decline, nothing is removed. Tor Browser and other Tor installs are never touched.
+
+- Installed from a `.deb`/`.rpm`: fully removed. Developer install (`install.sh`): removed without an admin prompt. Running from a build folder: only your settings are removed, the folder is left alone.
+- Preview the whole flow without removing anything: `VPNDESK_UNINSTALL_DRYRUN=1 vpn_desk`.
+- Without the app: `sudo apt remove vpn-desk` / `sudo dnf remove vpn-desk`.
+
+## 🩹 Troubleshooting: no internet after a crash
+
+VPN Desk records what it changes in `~/.local/state/vpndesk/session.json` *before* changing it, and undoes it exactly
+(your previous proxy settings are put back, not just "none") in every case:
+
+| What happened | What puts things back |
+|---|---|
+| Disconnect, close button, `SIGTERM` / `SIGINT` / `SIGHUP`, window closed | The app itself, then deletes the journal |
+| App force-quit / `kill -9` / crash | A small detached guard (`vpndesk-restore --watch`) notices within about a second and restores everything; Tor also exits on its own because the app owns it |
+| Whole session killed, power cut, guard also gone | Next launch runs the same recovery first and shows "Recovered from an unclean exit" |
+
+A tor process is only stopped if its pid, executable and start time match what the app recorded. Your own Tor Browser
+or `tor` service is never touched.
+
+**No internet and the app won't open?** Run this in a terminal (it needs no window and no display):
+
+```bash
+vpndesk-restore            # installed by the .deb/.rpm; from a source build: packaging/linux/vpndesk-restore
+vpndesk-restore --net      # also force-remove the system-wide firewall table (asks for administrator permission)
+```
+
+Manual fallbacks, if the script itself is unavailable:
+
+```bash
+# proxy (GNOME)
+gsettings set org.gnome.system.proxy mode 'none'
+# stuck system-wide firewall table (the table is called "vpndesk", family "inet")
+sudo nft list tables
+sudo nft delete table inet vpndesk
+# orphaned tor owned by you (look, then kill only the PID you recognise as VPN Desk's)
+pgrep -a tor
+```
+
+> Speed expectations: Tor is slower than a commercial VPN by design (three hops run by volunteers). On the author's connection (Germany exit, Linux) measured throughput is a few Mbps on one stream and roughly 10 to 15 Mbps across several streams, and it varies a lot from one circuit to the next. Measured results of every tuning experiment, including the rejected ones, are in `docs/bench/DECISIONS.md`.
+
 ## 🧱 Tech stack (all open source)
 
 | Component | Purpose | License |
@@ -216,7 +259,7 @@ Tor currently has no usable exit relays there. Pick another location.
 **Does it collect data?**
 No accounts, no analytics, no telemetry.
 
-**Honest status:** only Linux x86_64 has been built and exercised end to end. Linux arm64 builds in CI but hasn't been run on hardware; macOS and Windows are scaffolded but untested. System-wide mode's firewall rules are validated, but treat it as new software and keep the Restore button in mind.
+**Honest status:** Linux x86_64 has been built and exercised end to end, including system-wide mode (verified live on Fedora: traffic goes through Tor, DNS and the LAN behave, QUIC/IPv6 are blocked, and after a hard kill of the helper and Tor the stuck firewall table is removed by `vpndesk-restore --net`). Linux arm64 builds in CI but hasn't been run on hardware; macOS and Windows are scaffolded but untested. Keep `vpndesk-restore` in mind if anything ever misbehaves.
 
 ---
 

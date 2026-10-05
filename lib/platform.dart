@@ -2,13 +2,20 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io';
+import 'session.dart';
 
 /// Everything that differs between Linux, macOS and Windows lives here.
 class Plat {
   static final bool win = Platform.isWindows, mac = Platform.isMacOS, linux = Platform.isLinux;
 
   /// Per-user config/data dir (torrc, tor DataDirectory, pid file, measurements).
+  static Directory? configDirOverride; // tests
+
+  /// Set while uninstalling: nothing may re-create the settings folder after it was deleted.
+  static bool frozen = false;
+
   static Directory configDir() {
+    if (configDirOverride != null) return configDirOverride!..createSync(recursive: true);
     final env = Platform.environment;
     final String base;
     if (win) {
@@ -19,7 +26,7 @@ class Plat {
       base = env['XDG_CONFIG_HOME'] ?? '${env['HOME'] ?? '/tmp'}/.config';
     }
     final d = Directory('$base/vpn_desk');
-    d.createSync(recursive: true);
+    if (!frozen) d.createSync(recursive: true);
     return d;
   }
 
@@ -75,22 +82,36 @@ class Plat {
 
   static void rememberTor(int pid) {
     try { _pidFile.writeAsStringSync('$pid'); } catch (_) {}
+    if (linux) Session.recordTor(pid, torExecutable());
   }
 
-  /// Kill a tor left behind by a previous run of this app (it would hold the SOCKS port).
+  /// Stop a tor left behind by a previous run of this app (it would hold the SOCKS port).
+  /// On Linux the pid is only signalled if /proc/PID/exe is the tor we launch, so a recycled pid
+  /// (or the user's own Tor Browser) is never touched.
   static Future<void> killStaleTor() async {
     try {
       final pid = int.tryParse(_pidFile.readAsStringSync().trim());
-      if (pid != null) {
+      if (pid != null && pid > 1) {
         if (win) {
           await Process.run('taskkill', ['/F', '/PID', '$pid']);
-        } else {
+        } else if (_isOurTor(pid)) {
           Process.killPid(pid);
+          await Future.delayed(const Duration(milliseconds: 600));
         }
-        await Future.delayed(const Duration(milliseconds: 600));
       }
       _pidFile.deleteSync();
     } catch (_) {}
+  }
+
+  static bool _isOurTor(int pid) {
+    if (!linux) return true; // macOS has no /proc; unchanged behaviour, untested here
+    try {
+      final exe = Link('/proc/$pid/exe').resolveSymbolicLinksSync();
+      final ours = File(torExecutable()).existsSync() ? File(torExecutable()).resolveSymbolicLinksSync() : null;
+      return ours != null && exe == ours;
+    } catch (_) {
+      return false; // gone, or not ours to inspect
+    }
   }
 
   /// Ask tor to re-read its torrc (SIGHUP is unavailable on Windows, so use the control port).
@@ -113,19 +134,66 @@ class Plat {
   static String controlLines(String dataDir) =>
       win ? 'ControlPort 127.0.0.1:9061\nCookieAuthentication 1\n' : '';
 
+  /// `gsettings` binary; tests point this at a fake so the real desktop settings are never touched.
+  static String gsettingsCmd = 'gsettings';
+  static const _proxySchema = 'org.gnome.system.proxy';
+
+  static String _unquote(String v) => v.trim().replaceAll("'", '');
+
+  /// Current GNOME proxy mode/host/port, or null when gsettings is unavailable.
+  static Future<({String mode, String host, int port})?> _readGnomeProxy() async {
+    try {
+      Future<String> get(String schema, String key) async {
+        final r = await Process.run(gsettingsCmd, ['get', schema, key]);
+        if (r.exitCode != 0) throw StateError('gsettings get failed');
+        return (r.stdout as String).trim();
+      }
+      return (
+        mode: _unquote(await get(_proxySchema, 'mode')),
+        host: _unquote(await get('$_proxySchema.socks', 'host')),
+        port: int.tryParse(await get('$_proxySchema.socks', 'port')) ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Route apps that honour the OS proxy settings through Tor's SOCKS port.
+  /// Linux: the previous GNOME values are journaled *before* they are changed and put back on `false`
+  /// (never a blind "none"), so a crash can be undone exactly and a user's own proxy survives.
   static Future<void> setSystemProxy(bool on) async {
     Future<ProcessResult?> run(String cmd, List<String> a) async {
       try { return await Process.run(cmd, a); } catch (_) { return null; }
     }
     if (linux) {
-      Future<void> gs(List<String> a) => run('gsettings', ['set', ...a]);
+      Future<void> gs(List<String> a) => run(gsettingsCmd, ['set', ...a]);
       if (on) {
-        await gs(['org.gnome.system.proxy.socks', 'host', '127.0.0.1']);
-        await gs(['org.gnome.system.proxy.socks', 'port', '9050']);
-        await gs(['org.gnome.system.proxy', 'mode', 'manual']);
-      } else {
-        await gs(['org.gnome.system.proxy', 'mode', 'none']);
+        if (Session.get('proxy_changed') != true) {
+          final prev = await _readGnomeProxy();
+          if (prev == null) return; // no gsettings: nothing to change, so nothing to undo
+          Session.set({
+            'proxy_changed': true,
+            'prev_proxy_mode': prev.mode,
+            'prev_proxy_host': prev.host,
+            'prev_proxy_port': prev.port,
+          });
+        }
+        await gs(['$_proxySchema.socks', 'host', '127.0.0.1']);
+        await gs(['$_proxySchema.socks', 'port', '9050']);
+        await gs([_proxySchema, 'mode', 'manual']);
+      } else if (Session.get('proxy_changed') == true) {
+        var mode = '${Session.get('prev_proxy_mode') ?? 'none'}';
+        var host = '${Session.get('prev_proxy_host') ?? ''}';
+        var port = Session.get('prev_proxy_port') ?? 0;
+        // A "previous" value that is itself our leftover would re-create the dead-proxy problem.
+        if (mode == 'manual' && host == '127.0.0.1' && port == 9050) { mode = 'none'; host = ''; }
+        if (mode.isEmpty) mode = 'none';
+        if (host.isNotEmpty && port != 0) {
+          await gs(['$_proxySchema.socks', 'host', host]);
+          await gs(['$_proxySchema.socks', 'port', '$port']);
+        }
+        await gs([_proxySchema, 'mode', mode]);
+        Session.set({'proxy_changed': false});
       }
     } else if (mac) {
       final r = await run('networksetup', ['-listallnetworkservices']);
@@ -161,6 +229,36 @@ class Plat {
     if (!_has('pkexec')) return 'Needs polkit (pkexec) to ask for administrator permission. Install the "polkit" package.';
     if (!_has('nft')) return 'Needs nftables. Install the "nftables" package.';
     return null;
+  }
+
+  /// `vpndesk-restore` next to the executable (or in the source tree when run from a dev build).
+  static String? get restoreScript {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    for (final c in ['$exeDir/vpndesk-restore', '$exeDir/../../../../../packaging/linux/vpndesk-restore']) {
+      if (File(c).existsSync()) return c;
+    }
+    return null;
+  }
+
+  /// Recover from an unclean exit. Returns the script's exit code (0 nothing, 10 recovered, 1 failed) or null.
+  static Future<int?> runRestore() async {
+    final s = restoreScript;
+    if (s == null) return null;
+    try {
+      final r = await Process.run(s, ['--auto']).timeout(const Duration(minutes: 3));
+      return r.exitCode;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Detached guard: when this app dies uncleanly (SIGKILL included) it restores proxy/tor/firewall at once.
+  static Future<void> startWatchdog() async {
+    final s = restoreScript;
+    if (s == null) return;
+    try {
+      await Process.start(s, ['--watch'], mode: ProcessStartMode.detached);
+    } catch (_) {}
   }
 
   static String randomHex(int bytes) {
