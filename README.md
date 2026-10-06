@@ -90,7 +90,7 @@ Then launch **OnionDesk** from your application menu (or run `/opt/oniondesk/oni
 | 🍎 macOS (Apple Silicon + Intel) | 🧪 `.dmg` built by CI; not yet run on real hardware. Not notarized: open **System Settings → Privacy & Security → Open Anyway**, or run `xattr -cr /Applications/OnionDesk.app` |
 | 🪟 Windows x64 + arm64 | 🧪 Setup `.exe` built by CI; not yet run on real hardware. Windows may show a SmartScreen warning (unsigned): **More info → Run anyway**. arm64 bundles the x64 `tor.exe`, which runs under Windows' emulation |
 
-Windows and macOS use the app's local SOCKS5 proxy mode (it sets the OS proxy and restores your previous one, also after a crash on the next start). System-wide mode and the in-app uninstaller are Linux-only.
+Windows and macOS use the app's local SOCKS5 proxy mode (it sets the OS proxy and restores your previous one, also after a crash on the next start). System-wide mode is Linux-only. The in-app uninstaller (About > Uninstall) is available on Linux and Windows; on macOS drag the app to the Trash.
 
 ---
 

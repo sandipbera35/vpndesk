@@ -3,6 +3,12 @@
 ## Highlights
 - **Uninstall from the app** (Linux): About > Uninstall. Asks to confirm, then removes the app, its system helper and (optionally) your settings, with an animated progress page. Administrator permission is asked once; cancelling removes nothing. Set `VPNDESK_UNINSTALL_DRYRUN=1` to preview the flow without removing anything.
 
+## 1.1.4 (2026-10-06)
+
+- **Windows: in-app Uninstall** (About > Uninstall): confirm, then it restores your proxy, optionally deletes `%APPDATA%\oniondesk`, and runs the Inno Setup uninstaller after the app exits.
+- **Windows installer:** closes a running OnionDesk, stops only its own bundled Tor (never Tor Browser's) and clears a leftover OnionDesk proxy when uninstalled from Settings > Apps.
+- Linux and macOS are unchanged.
+
 ## 1.1.3 (2026-10-06)
 
 - **Fix:** switching country now also moves connections a browser already has open (they kept using the old exit, so sites like iplocation.io showed the old IP). Old circuits are closed through Tor's loopback-only control port (cookie auth, now on all platforms); the proxy stays up, so nothing goes direct.
