@@ -16,6 +16,9 @@ import 'uninstall.dart';
 import 'uninstall_page.dart';
 import 'world_map.dart';
 
+/// Top-level on purpose: a closure created inside a State method can capture `this`, which cannot be sent to an isolate.
+Future<Map<String, List<Map<String, dynamic>>>> _topExitsOffThread(String body) => Isolate.run(() => _topExitsPerCountry(body));
+
 /// Up to three non-BadExit relays per country from an Onionoo `details` body (runs off the UI isolate).
 Map<String, List<Map<String, dynamic>>> _topExitsPerCountry(String body) {
   final top = <String, List<Map<String, dynamic>>>{};
@@ -698,7 +701,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       final out = await _onionoo.get('details?flag=Exit&running=true&fields=country,observed_bandwidth,or_addresses,flags,fingerprint&limit=3000&order=-consensus_weight');
       if (out == null) throw 'no relay data';
       // ~1 MB of JSON: decoding it on the UI isolate dropped frames every minute.
-      final top = await Isolate.run(() => _topExitsPerCountry(out));
+      final top = await _topExitsOffThread(out);
       final est = <String, double>{}, rtts = <String, double>{};
       final now = DateTime.now();
       // Probe the selected country and the current top few every minute; the rest only every 10 minutes
@@ -741,7 +744,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       });
       }
       _autoSwitch();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('country stats failed: $e');
       if (mounted) setState(() => _statsFailed = true);
     } finally {
       _statsBusy = false;

@@ -78,7 +78,7 @@ Everything lives in `lib/main.dart` (`OnionDeskApp` -> `HomePage` / `_HomePageSt
 
 ## Last git version (always keep current)
 
-- Last published release: **v1.1.1** (2026-10-06; v1.1.0 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.
+- Last published release: **v1.1.2** (2026-10-06; v1.1.1 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.
 
 ## CI platforms (2026-10-06)
 
