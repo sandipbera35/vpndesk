@@ -136,8 +136,47 @@ class Plat {
     } catch (_) {}
   }
 
-  static String controlLines(String dataDir) =>
-      win ? 'ControlPort 127.0.0.1:9061\nCookieAuthentication 1\n' : '';
+  /// Loopback control port with cookie auth (the cookie sits in the 0700 tor data dir): used to reload and to close
+  /// stale circuits when the exit country changes.
+  static String controlLines(String dataDir) => 'ControlPort 127.0.0.1:9061\nCookieAuthentication 1\n';
+
+  static Future<String?> _control(String auth, List<String> commands) async {
+    try {
+      final s = await Socket.connect('127.0.0.1', 9061, timeout: const Duration(seconds: 3));
+      s.write('$auth\r\n${commands.join('\r\n')}\r\nQUIT\r\n');
+      await s.flush();
+      final out = await s.cast<List<int>>().transform(utf8.decoder).join().timeout(const Duration(seconds: 5), onTimeout: () => '');
+      s.destroy();
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Close every circuit so streams that are already open (a browser's keep-alive connection) cannot keep
+  /// using the previous exit: they die and are re-opened on a circuit that satisfies the new ExitNodes.
+  /// [password] is for system-wide mode's tor; otherwise the cookie in [dataDir] is used.
+  static Future<int> closeAllCircuits({String? password, String? dataDir}) async {
+    String auth;
+    try {
+      if (password != null) {
+        auth = 'AUTHENTICATE "$password"';
+      } else {
+        final cookie = await File('$dataDir/control_auth_cookie').readAsBytes();
+        auth = 'AUTHENTICATE ${cookie.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
+      }
+    } catch (_) {
+      return 0;
+    }
+    final status = await _control(auth, ['GETINFO circuit-status']);
+    if (status == null) return 0;
+    final ids = [
+      for (final m in RegExp(r'^(\d+) (?:BUILT|EXTENDED|LAUNCHED)\b', multiLine: true).allMatches(status)) m.group(1)!
+    ];
+    if (ids.isEmpty) return 0;
+    await _control(auth, [for (final id in ids) 'CLOSECIRCUIT $id']);
+    return ids.length;
+  }
 
   /// `gsettings` binary; tests point this at a fake so the real desktop settings are never touched.
   static String gsettingsCmd = 'gsettings';

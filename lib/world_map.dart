@@ -133,6 +133,12 @@ class _MapPainter extends CustomPainter {
   final String? realLabel, exitLabel;
   final double t, dropReal, dropExit;
 
+  static const Map<String, LatLon> _pointCountries = {
+    'sg': (lat: 1.35, lon: 103.82),
+    'hk': (lat: 22.32, lon: 114.17),
+    'tw': (lat: 23.7, lon: 121.0),
+  };
+
   static List<_Country>? _pcCountries;
   static Size? _pcSize;
   static List<Path>? _pcPaths;
@@ -192,6 +198,12 @@ class _MapPainter extends CustomPainter {
       canvas.drawPath(paths[i], hi);
       canvas.drawPath(paths[i], hiEdge);
       fallback = proj(cs[i].center.dx, cs[i].center.dy);
+    }
+
+    // Countries too small for the bundled outlines (no polygon) still get a pin at a fixed point.
+    if (fallback == null) {
+      final c = _pointCountries[country];
+      if (c != null) fallback = proj(c.lon, c.lat);
     }
 
     final realP = real == null ? null : proj(real!.lon, real!.lat);

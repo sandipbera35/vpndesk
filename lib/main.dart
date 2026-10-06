@@ -45,13 +45,66 @@ void main() {
 }
 
 const countries = {
-  'us': 'United States', 'de': 'Germany', 'nl': 'Netherlands', 'fr': 'France',
-  'gb': 'United Kingdom', 'jp': 'Japan', 'sg': 'Singapore', 'in': 'India',
-  'ca': 'Canada', 'au': 'Australia', 'se': 'Sweden', 'ch': 'Switzerland',
-  'es': 'Spain', 'it': 'Italy', 'br': 'Brazil', 'ru': 'Russia', 'kr': 'South Korea',
-  'no': 'Norway', 'fi': 'Finland', 'pl': 'Poland', 'cz': 'Czech Republic', 'at': 'Austria',
-  'be': 'Belgium', 'pt': 'Portugal', 'ie': 'Ireland', 'dk': 'Denmark', 'ro': 'Romania',
-  'mx': 'Mexico', 'ar': 'Argentina', 'hk': 'Hong Kong', 'tw': 'Taiwan', 'za': 'South Africa',
+  'af': 'Afghanistan', 'al': 'Albania', 'dz': 'Algeria',
+  'ao': 'Angola', 'aq': 'Antarctica', 'ar': 'Argentina',
+  'am': 'Armenia', 'au': 'Australia', 'at': 'Austria',
+  'az': 'Azerbaijan', 'bs': 'Bahamas', 'bd': 'Bangladesh',
+  'by': 'Belarus', 'be': 'Belgium', 'bz': 'Belize',
+  'bj': 'Benin', 'bt': 'Bhutan', 'bo': 'Bolivia',
+  'ba': 'Bosnia and Herzegovina', 'bw': 'Botswana', 'br': 'Brazil',
+  'bn': 'Brunei Darussalam', 'bg': 'Bulgaria', 'bf': 'Burkina Faso',
+  'bi': 'Burundi', 'kh': 'Cambodia', 'cm': 'Cameroon',
+  'ca': 'Canada', 'cf': 'Central African Republic', 'td': 'Chad',
+  'cl': 'Chile', 'cn': 'China', 'co': 'Colombia',
+  'cd': 'Congo', 'cg': 'Congo', 'cr': 'Costa Rica',
+  'hr': 'Croatia', 'cu': 'Cuba', 'cy': 'Cyprus',
+  'cz': 'Czech Republic', 'ci': 'Côte d\'Ivoire', 'dk': 'Denmark',
+  'dj': 'Djibouti', 'do': 'Dominican Republic', 'ec': 'Ecuador',
+  'eg': 'Egypt', 'sv': 'El Salvador', 'gq': 'Equatorial Guinea',
+  'er': 'Eritrea', 'ee': 'Estonia', 'sz': 'Eswatini',
+  'et': 'Ethiopia', 'fk': 'Falkland Islands (Malvinas)', 'fj': 'Fiji',
+  'fi': 'Finland', 'fr': 'France', 'tf': 'French Southern Territories',
+  'ga': 'Gabon', 'gm': 'Gambia', 'ge': 'Georgia',
+  'de': 'Germany', 'gh': 'Ghana', 'gr': 'Greece',
+  'gl': 'Greenland', 'gt': 'Guatemala', 'gn': 'Guinea',
+  'gw': 'Guinea-Bissau', 'gy': 'Guyana', 'ht': 'Haiti',
+  'hn': 'Honduras', 'hk': 'Hong Kong', 'hu': 'Hungary',
+  'is': 'Iceland', 'in': 'India', 'id': 'Indonesia',
+  'ir': 'Iran', 'iq': 'Iraq', 'ie': 'Ireland',
+  'il': 'Israel', 'it': 'Italy', 'jm': 'Jamaica',
+  'jp': 'Japan', 'jo': 'Jordan', 'kz': 'Kazakhstan',
+  'ke': 'Kenya', 'xk': 'Kosovo', 'kw': 'Kuwait',
+  'kg': 'Kyrgyzstan', 'la': 'Laos', 'lv': 'Latvia',
+  'lb': 'Lebanon', 'ls': 'Lesotho', 'lr': 'Liberia',
+  'ly': 'Libya', 'lt': 'Lithuania', 'lu': 'Luxembourg',
+  'mg': 'Madagascar', 'mw': 'Malawi', 'my': 'Malaysia',
+  'ml': 'Mali', 'mr': 'Mauritania', 'mx': 'Mexico',
+  'md': 'Moldova', 'mn': 'Mongolia', 'me': 'Montenegro',
+  'ma': 'Morocco', 'mz': 'Mozambique', 'mm': 'Myanmar',
+  'na': 'Namibia', 'np': 'Nepal', 'nl': 'Netherlands',
+  'nc': 'New Caledonia', 'nz': 'New Zealand', 'ni': 'Nicaragua',
+  'ne': 'Niger', 'ng': 'Nigeria', 'kp': 'North Korea',
+  'mk': 'North Macedonia', 'no': 'Norway', 'om': 'Oman',
+  'pk': 'Pakistan', 'ps': 'Palestine', 'pa': 'Panama',
+  'pg': 'Papua New Guinea', 'py': 'Paraguay', 'pe': 'Peru',
+  'ph': 'Philippines', 'pl': 'Poland', 'pt': 'Portugal',
+  'pr': 'Puerto Rico', 'qa': 'Qatar', 'ro': 'Romania',
+  'ru': 'Russia', 'rw': 'Rwanda', 'sa': 'Saudi Arabia',
+  'sn': 'Senegal', 'rs': 'Serbia', 'sc': 'Seychelles',
+  'sl': 'Sierra Leone', 'sg': 'Singapore', 'sk': 'Slovakia',
+  'si': 'Slovenia', 'sb': 'Solomon Islands', 'so': 'Somalia',
+  'za': 'South Africa', 'kr': 'South Korea', 'ss': 'South Sudan',
+  'es': 'Spain', 'lk': 'Sri Lanka', 'sd': 'Sudan',
+  'sr': 'Suriname', 'se': 'Sweden', 'ch': 'Switzerland',
+  'sy': 'Syria', 'tw': 'Taiwan', 'tj': 'Tajikistan',
+  'tz': 'Tanzania', 'th': 'Thailand', 'tl': 'Timor-Leste',
+  'tg': 'Togo', 'tt': 'Trinidad and Tobago', 'tn': 'Tunisia',
+  'tm': 'Turkmenistan', 'tr': 'Türkiye', 'ug': 'Uganda',
+  'ua': 'Ukraine', 'ae': 'United Arab Emirates', 'gb': 'United Kingdom',
+  'us': 'United States', 'uy': 'Uruguay', 'uz': 'Uzbekistan',
+  'vu': 'Vanuatu', 've': 'Venezuela', 'vn': 'Vietnam',
+  'eh': 'Western Sahara', 'ye': 'Yemen', 'zm': 'Zambia',
+  'zw': 'Zimbabwe',
 };
 
 class OnionDeskApp extends StatelessWidget {
@@ -91,7 +144,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String realIp = '—';
   String exitIp = '—';
   LatLon? _realLL, _exitLL;
-  String? _realPlace, _exitPlace;
+  String? _realPlace, _exitPlace, _exitNote;
   String speed = '—';
   String _log = '';
   // Tor logs for as long as the app is open: keep only the tail so the string (and each rebuild) stays bounded.
@@ -414,7 +467,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         final j = jsonDecode(await _get('https://ipwho.is/', viaTor: true, timeout: 12)) as Map<String, dynamic>;
         if (j['success'] == true && j['ip'] != null) {
           result = '${j['ip']} — ${j['country']}';
-          if (j['latitude'] != null && mounted) {
+          final dbCc = '${j['country_code'] ?? ''}'.toLowerCase();
+          final torName = countries[selectedCountry];
+          if (dbCc.isNotEmpty && dbCc != selectedCountry && torName != null && mounted) {
+            // Tor picked this relay as an exit in the chosen country (its own GeoIP); a third-party IP database
+            // disagrees. Follow Tor on the map (country centre) and say so instead of showing a contradiction.
+            result = '${j['ip']} — $torName';
+            _exitLL = null;
+            _exitPlace = torName;
+            _exitNote = 'Tor: $torName · geo-IP: ${[j['city'], j['country']].where((e) => e != null && '$e'.isNotEmpty).join(', ')}';
+          } else if (j['latitude'] != null && mounted) {
+            _exitNote = null;
             _exitLL = (lat: (j['latitude'] as num).toDouble(), lon: (j['longitude'] as num).toDouble());
             _exitPlace = [j['city'], j['country']].where((e) => e != null && '$e'.isNotEmpty).join(', ');
           }
@@ -436,7 +499,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
     if (gen != _exitGen) return; // superseded: let the newer lookup report
     if (mounted) setState(() { if (result != null || !silent) exitIp = result ?? 'unavailable'; _loadingExit = false; });
-    if (result != null && _exitLL == null && mounted && running) {
+    if (result != null && _exitLL == null && _exitNote == null && mounted && running) {
       final ip = result.split(' ').first;
       if (_ipRe.hasMatch(ip)) {
         final g = await _geo(ip, viaTor: true);
@@ -769,6 +832,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       exitIp = '…';
       _exitLL = null; // map shows the new country's pin right away
       _exitPlace = null;
+      _exitNote = null;
       log += 'Switching to ${countries[cc]} (proxy stays on)…\n';
     });
     _countryCtrl?.text = countries[cc]!;
@@ -777,16 +841,23 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       // Whole country, strict. 'pending' stops the lookup from pinning the OLD exit while the switch is in flight.
       _pinnedIp = 'pending';
       await _applyExit('{$cc}');
+      _dropTorClient(); // pooled keep-alive connections stay on the OLD circuit and would keep reporting the old IP
+      // Let tor finish the reload, then close the old circuits: a browser's open keep-alive connection would otherwise
+      // keep using the previous exit (the app's own IP check opens fresh connections, so it showed the change already).
+      await Future.delayed(const Duration(milliseconds: 500));
+      await Plat.closeAllCircuits(password: _sysActive ? _ctlPass : null, dataDir: '${_cfgDir.path}/data');
       // Poll a tiny IP-only endpoint through Tor until the exit actually changes, then show it at once;
       // the full lookup (country, location pin) follows.
       for (var i = 0; i < 10 && !stale(); i++) {
         await Future.delayed(Duration(milliseconds: i == 0 ? 600 : 900));
         if (stale()) return;
         try {
+          _dropTorClient(); // tor may not have reloaded yet: never let a poll pin a connection to the old circuit
           final ip = (await _get('https://api.ipify.org', viaTor: true, timeout: 8)).trim();
           if (_ipRe.hasMatch(ip) && ip != oldIp) {
             if (!stale()) setState(() => exitIp = '$ip — ${countries[cc]}');
             _pinnedIp = null; // the exit really changed: now it is safe to pin the new relay
+            _dropTorClient();
             break;
           }
         } catch (_) {}
@@ -1398,7 +1469,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       Row(children: [
         _statCard('Real IP', realIp, Icons.home_rounded, _amber, sub: _realPlace, compact: compact),
         const SizedBox(width: 12),
-        _statCard('Exit IP', exitIp, Icons.public, _teal, onRefresh: running ? _loadExitIp : null, loading: _loadingExit, sub: running ? _exitPlace : null, compact: compact),
+        _statCard('Exit IP', exitIp, Icons.public, _teal, onRefresh: running ? _loadExitIp : null, loading: _loadingExit, sub: running ? (_exitNote ?? _exitPlace) : null, compact: compact),
         const SizedBox(width: 12),
         _statCard('Speed', speed, Icons.speed, const Color(0xFF7C9CFF), onRefresh: _loadSpeed, loading: _loadingSpeed, sub: speedDetail, compact: compact),
       ]),
