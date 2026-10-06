@@ -198,12 +198,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _statsTimer?.cancel();
   }
 
-  // ---- Uninstall (Linux) ----
+  // ---- Uninstall (Linux, Windows) ----
 
   /// Ask, then run the uninstall page. `ONIONDESK_UNINSTALL_DRYRUN=1` previews the whole flow and removes nothing.
   Future<void> _beginUninstall() async {
     final dry = Platform.environment['ONIONDESK_UNINSTALL_DRYRUN'] == '1';
-    UninstallPlan planFor(bool data) => UninstallPlan.detect(exe: Platform.resolvedExecutable, env: Platform.environment, deleteData: data);
+    UninstallPlan planFor(bool data) => Plat.win
+        ? UninstallPlan.detectWindows(exe: Platform.resolvedExecutable, env: Platform.environment, deleteData: data)
+        : UninstallPlan.detect(exe: Platform.resolvedExecutable, env: Platform.environment, deleteData: data);
     final deleteData = await showUninstallConfirm(context, planFor: planFor, dryRun: dry);
     if (deleteData == null || !mounted) return;
     final plan = planFor(deleteData);
@@ -1487,7 +1489,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _aboutButton() => Tooltip(
         message: 'About OnionDesk',
         child: TextButton.icon(
-          onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: Plat.linux ? _beginUninstall : null)),
+          onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: (Plat.linux || Plat.win) ? _beginUninstall : null)),
           style: TextButton.styleFrom(foregroundColor: Colors.white70, backgroundColor: Colors.white.withValues(alpha: 0.06), shape: const StadiumBorder()),
           icon: const Icon(Icons.info_outline_rounded, size: 16),
           label: const Text('About'),

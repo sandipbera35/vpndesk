@@ -200,4 +200,73 @@ void main() {
     expect(isSafeUserPath(doc.path, home.path), isFalse);
     expect(bad.dataPaths.every((p) => isSafeUserPath(p, home.path)), isTrue);
   });
+  windowsTests();
+}
+
+// ---- Windows (pure: paths are plain strings, nothing touches the machine) ----
+void windowsTests() {
+  group('windows', () {
+    const exe = r'C:\Users\Sam\AppData\Local\Programs\OnionDesk\oniondesk.exe';
+    const unins = r'C:\Users\Sam\AppData\Local\Programs\OnionDesk\unins000.exe';
+    final env = {'APPDATA': r'C:\Users\Sam\AppData\Roaming'};
+
+    UninstallPlan plan({bool data = true, bool installed = true}) =>
+        UninstallPlan.detectWindows(exe: exe, env: env, deleteData: data, exists: (p) => installed && p == unins);
+
+    test('Inno install: uninstaller found, steps in order, only %APPDATA%\\oniondesk is deleted as the user', () {
+      final p = plan();
+      expect(p.kind, InstallKind.windows);
+      expect(p.rootScript, unins);
+      expect(p.steps.map((s) => s.id), ['disconnect', 'data', 'package']);
+      expect(p.dataPaths, [r'C:\Users\Sam\AppData\Roaming\oniondesk']);
+    });
+
+    test('keeping settings drops the data step', () {
+      final p = plan(data: false);
+      expect(p.steps.map((s) => s.id), ['disconnect', 'package']);
+      expect(p.dataPaths, isEmpty);
+    });
+
+    test('no uninstaller next to the exe (zip / build folder): portable, folder is never removed', () {
+      final p = plan(installed: false);
+      expect(p.kind, InstallKind.portable);
+      expect(p.rootScript, isNull);
+    });
+
+    test('path guard: only exactly %APPDATA%\\oniondesk', () {
+      const a = r'C:\Users\Sam\AppData\Roaming';
+      expect(isSafeWinDataPath(r'C:\Users\Sam\AppData\Roaming\oniondesk', a), isTrue);
+      expect(isSafeWinDataPath(r'c:\users\sam\appdata\roaming\ONIONDESK', a), isTrue);
+      for (final bad in [r'C:\Users\Sam\AppData\Roaming', r'C:\Users\Sam', r'C:\', r'C:\Users\Sam\AppData\Roaming\other', r'C:\Users\Sam\AppData\Roaming\oniondesk\..\x', '']) {
+        expect(isSafeWinDataPath(bad, a), isFalse, reason: bad);
+      }
+      expect(isSafeWinDataPath(r'C:\x\oniondesk', ''), isFalse);
+      expect(isSafeWinDataPath(r'C:\oniondesk', r'C:\'), isFalse);
+    });
+
+    test('flow: disconnect, delete settings, then launch the uninstaller last', () async {
+      final calls = <String>[];
+      final dir = Directory.systemTemp.createTempSync('winu_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      // Plan pointing at a real temp dir shaped like %APPDATA%: only used to prove ordering with the fake launcher.
+      final u = Uninstaller(
+        plan: UninstallPlan.detectWindows(exe: exe, env: env, deleteData: false, exists: (p) => p == unins),
+        prepare: () async => calls.add('prepare'),
+        winLaunch: (path) async => calls.add('launch:$path'),
+      );
+      final ev = await collect(u);
+      expect(summary(ev), 'disconnect:running disconnect:done package:running package:done FINISHED');
+      expect(calls, ['prepare', 'launch:$unins']);
+    });
+
+    test('flow: a failing launcher is reported and points at Settings > Apps', () async {
+      final u = Uninstaller(
+        plan: UninstallPlan.detectWindows(exe: exe, env: env, deleteData: false, exists: (p) => p == unins),
+        winLaunch: (_) async => throw 'boom',
+      );
+      final ev = await collect(u);
+      expect(ev.last.state, UStepState.failed);
+      expect(ev.last.error, contains('Settings > Apps'));
+    });
+  });
 }

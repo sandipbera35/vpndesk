@@ -10,6 +10,9 @@ enum InstallKind {
   /// `install.sh` copy under ~/.local/share/oniondesk: removed without administrator rights.
   dev,
 
+  /// Windows Inno Setup install: removed by its own `unins000.exe` (launched detached, after this app exits).
+  windows,
+
   /// Anything else (a build directory, an extracted archive): only the user's settings are removed, never the folder.
   portable,
 }
@@ -53,6 +56,23 @@ bool isSafeUserPath(String path, String home) {
   return parts.length >= 3 && _deletableNames.contains(parts.last);
 }
 
+/// Windows: the only thing deleted as the user is exactly `%APPDATA%\oniondesk`.
+bool isSafeWinDataPath(String path, String appData) {
+  final a = appData.replaceAll('/', '\\');
+  if (!RegExp(r'^[A-Za-z]:\\[^\\]').hasMatch(a) || a.endsWith('\\') || a.contains('..')) return false;
+  return path.replaceAll('/', '\\').toLowerCase() == '$a\\oniondesk'.toLowerCase();
+}
+
+/// Run Inno Setup's uninstaller silently once this app's process has exited (it cannot remove a running exe).
+Future<void> launchWindowsUninstaller(String uninstaller) async {
+  final q = uninstaller.replaceAll("'", "''");
+  await Process.start(
+    'powershell',
+    ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', "Wait-Process -Id $pid -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process -FilePath '$q' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'"],
+    mode: ProcessStartMode.detached,
+  );
+}
+
 class UninstallPlan {
   final InstallKind kind;
   final bool deleteData;
@@ -94,8 +114,32 @@ class UninstallPlan {
     return UninstallPlan._(kind, deleteData, script, home, app.where((p) => isSafeUserPath(p, home)).toList(), data.where((p) => isSafeUserPath(p, home)).toList());
   }
 
+  /// Windows: Inno Setup installs `unins000.exe` next to the exe. Pure like [detect].
+  factory UninstallPlan.detectWindows({
+    required String exe,
+    required Map<String, String> env,
+    required bool deleteData,
+    bool Function(String path)? exists,
+  }) {
+    exists ??= (p) => File(p).existsSync();
+    final appData = env['APPDATA'] ?? '';
+    final cut = exe.lastIndexOf(RegExp(r'[\\/]'));
+    final exeDir = cut < 0 ? '' : exe.substring(0, cut);
+    final unins = '$exeDir\\unins000.exe';
+    final isInstalled = exeDir.isNotEmpty && exists(unins);
+    final data = deleteData ? ['$appData\\oniondesk'] : <String>[];
+    return UninstallPlan._(isInstalled ? InstallKind.windows : InstallKind.portable, deleteData, isInstalled ? unins : null, appData, const [],
+        data.where((p) => isSafeWinDataPath(p, appData)).toList());
+  }
+
   /// The steps the page shows, in order.
-  List<UStep> get steps => [
+  List<UStep> get steps => kind == InstallKind.windows
+      ? [
+          const UStep('disconnect', 'Disconnecting and restoring your network'),
+          if (deleteData) const UStep('data', 'Deleting your settings and saved data'),
+          const UStep('package', 'Removing application files'),
+        ]
+      : [
         const UStep('disconnect', 'Disconnecting and restoring your network'),
         if (kind == InstallKind.package) ...const [
           UStep('firewall', 'Removing firewall rules'),
@@ -107,7 +151,12 @@ class UninstallPlan {
       ];
 
   /// Human-readable list for the confirmation dialog.
-  List<String> get willRemove => [
+  List<String> get willRemove => kind == InstallKind.windows
+      ? [
+          'OnionDesk, its Start menu and desktop shortcuts, and the bundled Tor',
+          if (deleteData) 'Your settings and saved data (%APPDATA%\\oniondesk)',
+        ]
+      : [
         if (kind == InstallKind.package) 'OnionDesk and its menu entry (administrator permission is asked once)',
         if (kind == InstallKind.package) 'The system-wide helper, its firewall table and the "oniondesk" system user',
         if (kind == InstallKind.dev) 'The developer install in ~/.local/share/oniondesk and its menu entry',
@@ -115,7 +164,9 @@ class UninstallPlan {
       ];
 
   /// What stays, shown so nothing is a surprise.
-  String get leavesBehind => kind == InstallKind.portable
+  String get leavesBehind => kind == InstallKind.windows
+      ? 'Your previous proxy settings are put back first. Tor Browser and any other Tor installs are never touched. The app closes, then Windows removes its files in a few seconds.'
+      : kind == InstallKind.portable
       ? 'The folder this copy runs from is not deleted. Other Tor installs and Tor Browser are never touched.'
       : 'Tor Browser and any other Tor installs on this computer are never touched.';
 }
@@ -140,7 +191,10 @@ class Uninstaller {
   final bool dryRun;
   final Duration dryStep;
 
-  Uninstaller({required this.plan, this.prepare, this.rootRun = pkexecRun, this.dryRun = false, this.dryStep = const Duration(milliseconds: 1100)});
+  /// Windows only: starts the Inno Setup uninstaller (injected in tests).
+  final Future<void> Function(String uninstaller) winLaunch;
+
+  Uninstaller({required this.plan, this.prepare, this.rootRun = pkexecRun, this.winLaunch = launchWindowsUninstaller, this.dryRun = false, this.dryStep = const Duration(milliseconds: 1100)});
 
   Stream<UninstallEvent> run() async* {
     if (dryRun) {
@@ -213,13 +267,28 @@ class Uninstaller {
       }
       yield const UninstallEvent.step('data', UStepState.done);
     }
+    if (plan.kind == InstallKind.windows) {
+      yield const UninstallEvent.step('package', UStepState.running);
+      try {
+        await winLaunch(plan.rootScript!);
+      } catch (e) {
+        yield UninstallEvent.failed('package', 'Could not start the Windows uninstaller: $e. Use Settings > Apps > OnionDesk > Uninstall.');
+        return;
+      }
+      yield const UninstallEvent.step('package', UStepState.done);
+    }
     yield const UninstallEvent.finished();
+  }
+
+  bool _isSafe(String p) {
+    final windowsPlan = plan.kind == InstallKind.windows || plan.home.contains('\\');
+    return windowsPlan ? isSafeWinDataPath(p, plan.home) : isSafeUserPath(p, plan.home);
   }
 
   /// Delete each path (guarded again here), retrying briefly in case a closing process still holds a file.
   Future<String?> _deleteAll(List<String> paths) async {
     for (final p in paths) {
-      if (!isSafeUserPath(p, plan.home)) return 'Refused to delete $p';
+      if (!_isSafe(p)) return 'Refused to delete $p';
       for (var attempt = 0; attempt < 4; attempt++) {
         try {
           final t = FileSystemEntity.typeSync(p, followLinks: false);
