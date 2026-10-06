@@ -3,6 +3,12 @@
 ## Highlights
 - **Uninstall from the app** (Linux): About > Uninstall. Asks to confirm, then removes the app, its system helper and (optionally) your settings, with an animated progress page. Administrator permission is asked once; cancelling removes nothing. Set `VPNDESK_UNINSTALL_DRYRUN=1` to preview the flow without removing anything.
 
+## 1.1.3 (2026-10-06)
+
+- **Fix:** switching country now also moves connections a browser already has open (they kept using the old exit, so sites like iplocation.io showed the old IP). Old circuits are closed through Tor's loopback-only control port (cookie auth, now on all platforms); the proxy stays up, so nothing goes direct.
+- **Fix:** the map exit pin follows Tor's country when IP-geolocation databases disagree, with a note on the Exit IP card; Singapore, Hong Kong and Taiwan (no outline in the map data) now get a pin.
+- **New:** all 178 countries are listed; countries without exit relays are dimmed and say so when clicked.
+
 ## 1.1.2 (2026-10-06)
 
 - **Fix:** the per-country speed estimates and ping were missing (sidebar stuck on "loading…") in 1.1.0 and 1.1.1. The background relay-list decode could not hand its result back; it is now a standalone function, and failures are logged.

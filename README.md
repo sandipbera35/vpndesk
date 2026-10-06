@@ -22,10 +22,10 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 
 | | |
 |---|---|
-| 🌍 **Country exits** | Choose from dozens of countries. Tor is configured with `ExitNodes` pinned to the fastest relay there and `StrictNodes 1`, so you never silently fall back to another country. |
+| 🌍 **Country exits** | Choose from 178 countries (the ~50 that currently have Tor exit relays are selectable; the rest are dimmed). Tor is configured with `ExitNodes` pinned to the fastest relay there and `StrictNodes 1`, so you never silently fall back to another country. |
 | ⚡ **Live speed estimates** | Every minute the app measures real round-trip time to relays in each country, caps it by relay bandwidth, and calibrates against speeds you have actually measured through Tor. The sidebar shows `~Mbps · ms` per country, always up to date. |
 | 🤖 **Auto (fastest) mode** | One click and OnionDesk always uses the highest-speed location, switching only when another is **≥ 25 % faster** and at most every **5 minutes**, so it never flaps. |
-| 🔁 **Leak-free location switching** | Changing country edits the live Tor config instead of restarting it. The proxy never drops, so your real IP is not exposed mid-switch. |
+| 🔁 **Leak-free location switching** | Changing country edits the live Tor config instead of restarting it, then closes the old circuits (through Tor's loopback-only, cookie-protected control port) so open browser connections move to the new exit too. The proxy never drops, so your real IP is not exposed mid-switch. |
 | 🗺️ **Live world map** | Highlights the selected country and pins your **real IP** and **exit IP** at their locations with animated pins, ripples and a flowing link between them. Works fully offline (bundled Natural Earth data). |
 | 🛡️ **System-wide mode** *(optional, Linux)* | Redirects **all** TCP and DNS from **every app** into Tor with an `nftables` transparent proxy, on GNOME, KDE or any desktop. Asks for administrator permission once, in the app. |
 | 📦 **Nothing else to install** | Tor is bundled inside every package. Install the app and it works. |
