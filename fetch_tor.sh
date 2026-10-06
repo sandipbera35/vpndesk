@@ -14,7 +14,7 @@ TOR_SIGNING_FPR="EF6E286DDA85EA2A4BA7DE684E2C6E8793298290"
 SUMS_FILE="sha256sums-signed-build.txt"
 verified=0
 if command -v gpg >/dev/null 2>&1; then
-  GNUPGHOME="$TMP/gnupg"; export GNUPGHOME; mkdir -m 700 "$GNUPGHOME"
+  GNUPGHOME="$TMP/gnupg"; export GNUPGHOME; mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME" 2>/dev/null || true
   if curl -fsSL "$BASE/$SUMS_FILE" -o "$TMP/sums" && curl -fsSL "$BASE/$SUMS_FILE.asc" -o "$TMP/sums.asc" \
      && gpg --batch --quiet --auto-key-locate clear,wkd --locate-keys torbrowser@torproject.org >/dev/null 2>&1; then
     # VALIDSIG's last field is the fingerprint of the signer's primary key: it must be the pinned one.

@@ -210,9 +210,54 @@ class Plat {
       }
     } else if (win) {
       const key = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings';
-      if (on) await run('reg', ['add', key, '/v', 'ProxyServer', '/t', 'REG_SZ', '/d', 'socks=127.0.0.1:9050', '/f']);
-      await run('reg', ['add', key, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f']);
+      final prevFile = File('${configDir().path}/win_proxy_prev.json');
+      if (on) {
+        // Remember what the user had (once) so turning it off puts exactly that back, even after a crash.
+        if (!prevFile.existsSync()) {
+          final cur = await _readWinProxy();
+          if (cur != null && cur.server != _winOurProxy) {
+            try { prevFile.writeAsStringSync(jsonEncode({'enable': cur.enable, 'server': cur.server})); } catch (_) {}
+          }
+        }
+        await run('reg', ['add', key, '/v', 'ProxyServer', '/t', 'REG_SZ', '/d', _winOurProxy, '/f']);
+        await run('reg', ['add', key, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', '1', '/f']);
+      } else {
+        var enable = 0;
+        var server = '';
+        try {
+          final m = jsonDecode(prevFile.readAsStringSync()) as Map;
+          enable = (m['enable'] as num?)?.toInt() ?? 0;
+          server = '${m['server'] ?? ''}';
+        } catch (_) {}
+        if (server == _winOurProxy) { server = ''; enable = 0; } // never restore our own leftover
+        if (server.isNotEmpty) await run('reg', ['add', key, '/v', 'ProxyServer', '/t', 'REG_SZ', '/d', server, '/f']);
+        await run('reg', ['add', key, '/v', 'ProxyEnable', '/t', 'REG_DWORD', '/d', '$enable', '/f']);
+        try { prevFile.deleteSync(); } catch (_) {}
+      }
     }
+  }
+
+  static const _winOurProxy = 'socks=127.0.0.1:9050';
+
+  static Future<({int enable, String server})?> _readWinProxy() async {
+    try {
+      final r = await Process.run('reg', ['query', r'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings', '/v', 'ProxyEnable']);
+      final r2 = await Process.run('reg', ['query', r'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings', '/v', 'ProxyServer']);
+      final en = RegExp(r'ProxyEnable\s+REG_DWORD\s+0x([0-9a-fA-F]+)').firstMatch('${r.stdout}');
+      final sv = RegExp(r'ProxyServer\s+REG_SZ\s+(.+)').firstMatch('${r2.stdout}');
+      return (enable: en == null ? 0 : int.parse(en.group(1)!, radix: 16), server: sv?.group(1)?.trim() ?? '');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Windows has no crash journal: on start, if a killed run left our dead SOCKS proxy enabled, put the user's proxy back.
+  static Future<bool> recoverWindowsProxy() async {
+    if (!win) return false;
+    final cur = await _readWinProxy();
+    if (cur == null || cur.enable != 1 || cur.server != _winOurProxy) return false;
+    await setSystemProxy(false);
+    return true;
   }
 
   // ---- Optional system-wide mode (Linux: nftables transparent proxy via a pkexec helper) ----

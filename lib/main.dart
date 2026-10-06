@@ -209,6 +209,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   /// Undo what an earlier, killed run left behind (proxy, orphaned tor, firewall) via `oniondesk-restore`.
   Future<void> _recoverOnStart() async {
+    if (Plat.win) {
+      if (await Plat.recoverWindowsProxy() && mounted) setState(() => _recoveryNote = 'Recovered from an unclean exit: your previous proxy settings were restored.');
+      return;
+    }
     if (!Plat.linux) return;
     final rc = await Plat.runRestore();
     if (!mounted || rc == null || rc == 0) return;
