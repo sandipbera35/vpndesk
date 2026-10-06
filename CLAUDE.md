@@ -78,9 +78,11 @@ Everything lives in `lib/main.dart` (`OnionDeskApp` -> `HomePage` / `_HomePageSt
 
 ## Last git version (always keep current)
 
-- Last published release: **v1.1.3** (2026-10-06; v1.1.2 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.
+- Last published release: **v1.1.4** (2026-10-06; v1.1.3 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.
 
 ## CI platforms (2026-10-06)
 
 - `release.yml` builds Linux deb/rpm/tar.gz (x64+arm64), macOS DMG (macos-14 arm64 + macos-15-intel), Windows setup.exe (x64 + arm64; arm64 ships x64 tor.exe) and attaches them to the tag. `workflow_dispatch` with `tag=vX.Y.Z` re-attaches mac/windows to an existing tag (it builds that tag's sources). The `repo` job (apt/dnf) fails until GPG secrets exist; harmless. macOS ad-hoc signed (needs Apple Developer ID for notarization), Windows unsigned. macOS/Windows installers never run on real hardware yet. User rule: never disturb the Linux packages.
 - Windows proxy: prior proxy saved in `<config>/win_proxy_prev.json`, restored on disconnect, and a leftover `socks=127.0.0.1:9050` is cleared at start; no live watchdog on Windows (SIGKILL leaves the proxy until next launch).
+
+- Windows in-app uninstall (v1.1.4): `UninstallPlan.detectWindows` + `launchWindowsUninstaller` (PowerShell waits for the app pid, then runs Inno `unins000.exe /VERYSILENT`); installer `[Code]` kills only its own tor and clears a leftover `socks=127.0.0.1:9050` proxy. Unit-tested and CI-built; never run on real Windows by me (user tested v1.1.3 on Windows x64, worked).
