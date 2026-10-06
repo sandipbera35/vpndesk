@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach the macOS DMGs to (e.g. v1.1.0)'
+        required: false
 permissions:
   contents: write
 jobs:
@@ -72,3 +76,37 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: site
           force_orphan: true
+
+  macos:
+    # Apple Silicon (arm64) and Intel DMGs. Ad-hoc signed (not notarized): first launch needs right-click > Open.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: aarch64
+          - os: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Build app
+        run: flutter pub get && flutter build macos --release
+      - name: Package DMG (tor bundled)
+        run: ./package_mac.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*.dmg
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: dist/*.dmg
