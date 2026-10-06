@@ -3,6 +3,19 @@
 ## Highlights
 - **Uninstall from the app** (Linux): About > Uninstall. Asks to confirm, then removes the app, its system helper and (optionally) your settings, with an animated progress page. Administrator permission is asked once; cancelling removes nothing. Set `VPNDESK_UNINSTALL_DRYRUN=1` to preview the flow without removing anything.
 
+## 1.2.0 (2026-10-06)
+
+Every feature below was run end to end on the real app (clean config, real Tor): new identity and auto-rotate (19 exit changes in 4 min with a 15 s test interval, real IP never seen), bridges obfs4/Snowflake/meek/custom (connected; injected torrc lines refused), exclude countries (refused when selected, avoided by Auto), ad blocker (blocked domains refused, normal sites work), split tunneling (launcher and `torsocks` verified against a control).
+
+- **New identity** button and **auto-rotate** (5/10/30/60 min): new relay in the same country, open connections move too.
+- **Leak test** dialog; **exclude countries** (with Five/Nine/Fourteen Eyes presets); **circuit view** on the map (guard, middle, exit by country).
+- **Start at login** and **connect on launch** (opt-in); **update notice** (opt-out); **Run an app through OnionDesk** (Linux/macOS); optional download of the full ad-block list (StevenBlack, MIT; see THIRD_PARTY_NOTICES.md).
+- **Bridges** (obfs4, Snowflake, meek, custom) via the bundled `lyrebird`; **circuit visualizer** with a list of active circuits and their sites; **installed-apps picker** for "Run an app through OnionDesk".
+- **Map:** zoom with the mouse wheel, drag to pan, double-click to zoom in, +/−/reset buttons (vector map, stays sharp); the expand button makes it fill the window. **Connecting** now shows an animated progress ring with the bootstrap percentage and phase, and a completion burst when the circuit is ready.
+- **Languages:** हिन्दी, বাংলা, Español, العربية (RTL), Русский (first drafts; country names stay English).
+- **Fix:** split tunneling with `torsocks` installed no longer also sets the proxy variables (torsocks refuses localhost, so programs that read them failed).
+- Not included yet: tray icon (needs an indicator library on Linux), per-app exclusion in System-wide mode.
+
 ## 1.1.4 (2026-10-06)
 
 - **Windows: in-app Uninstall** (About > Uninstall): confirm, then it restores your proxy, optionally deletes `%APPDATA%\oniondesk`, and runs the Inno Setup uninstaller after the app exits.

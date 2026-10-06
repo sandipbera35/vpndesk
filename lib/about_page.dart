@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'platform.dart';
+import 'top_icons.dart' show DragBar;
 
 const _teal = Color(0xFF2DE2C4), _amber = Color(0xFFFFC857), _violet = Color(0xFF7C9CFF);
 
@@ -66,7 +67,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
               ]),
             ),
             Column(children: [
-              Container(
+              DragBar(child: Container(
                 height: 40,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 alignment: Alignment.centerLeft,
@@ -79,7 +80,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                     label: const Text('Close'),
                   ),
                 ]),
-              ),
+              )),
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
@@ -276,6 +277,116 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
               ],
             ),
           ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.fingerprint_rounded,
+              color: _teal,
+              title: 'New identity & auto-rotate',
+              tagline: 'A fresh relay in the same country, on demand or on a timer.',
+              points: [
+                'Press New identity (beside the Ad blocker chip) to switch to a different relay in your chosen country. Open browser connections are moved too, so sites really see the new IP.',
+                'Auto-rotate (Settings) does the same every 5, 10, 30 or 60 minutes.',
+                'The country stays pinned (StrictNodes), so nothing can go direct while it changes. Tor limits this to about once every 10 seconds.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.hub_outlined,
+              color: _violet,
+              title: 'Circuit visualizer',
+              tagline: 'See the path your traffic takes, drawn on the map.',
+              points: [
+                'While connected the map draws you → guard → middle → exit, with a label for the guard and middle country.',
+                'Open Circuits on the map to list your active circuits, the sites using each one, and highlight any of them.',
+                'Everything is read from Tor\'s own control port and its bundled GeoIP file, so it works offline and where Tor Project web services are blocked. Countries only, never street addresses.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.alt_route_rounded,
+              color: _amber,
+              title: 'Bridges',
+              tagline: 'For networks that block Tor.',
+              points: [
+                'Settings → Bridges: obfs4, Snowflake, meek (looks like a CDN) or your own bridge lines from bridges.torproject.org.',
+                'Uses the lyrebird transport bundled with Tor (Linux x64, Windows, macOS). Not yet on Linux arm64, and not combinable with System-wide mode.',
+                'Bridges are slower; Snowflake needs the most patience. Direct relay probes are switched off while a bridge is used.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.shield_outlined,
+              color: _teal,
+              title: 'Leak test',
+              tagline: 'Check that nothing leaks.',
+              points: [
+                'Settings → Tools → Leak test (while connected) checks that sites see a Tor exit and not your real IP, that names are resolved inside Tor, and whether apps that ignore the proxy are covered.',
+                'WebRTC cannot be tested from a desktop app; the result tells you which browser setting to change.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.call_split_rounded,
+              color: _violet,
+              title: 'Split tunneling (per app)',
+              tagline: 'Run chosen apps through Tor.',
+              points: [
+                'Settings → Tools → Split tunneling lists your installed apps (Linux .desktop files incl. Flatpak and Snap, macOS Applications, Windows Start Menu).',
+                'The app starts with OnionDesk\'s proxy set. Browsers get a private profile with remote DNS and WebRTC off. On Linux, torsocks (if installed) also forces apps that ignore proxy settings.',
+                'Windows and macOS cannot force such apps; for full coverage use System-wide mode (Linux). Kernel-level per-app routing (WFP, namespaces, Network Extensions) is not implemented.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.block_flipped,
+              color: _amber,
+              title: 'Exclude countries',
+              tagline: 'Never exit from countries you choose.',
+              points: [
+                'Settings → Exclude countries, with Five, Nine and Fourteen Eyes presets.',
+                'Excluded countries cannot be selected and Auto never picks them.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.block,
+              color: _teal,
+              title: 'Ad blocker',
+              tagline: 'Block known ad and tracker domains.',
+              points: [
+                'Off by default. A small built-in list plus, if you download it in Settings, the full StevenBlack list (about 72,000 domains, MIT licence). Remove it any time.',
+                'Works for apps that use the proxy and send hostnames; apps that resolve names themselves are not covered. Not available in System-wide mode yet.',
+              ],
+            ),
+          ),
+          SizedBox(
+            width: w,
+            child: const _ModeCard(
+              icon: Icons.settings_rounded,
+              color: _violet,
+              title: 'Settings, languages & updates',
+              tagline: 'Everything is remembered between launches.',
+              points: [
+                'Six languages: English, हिन्दी, বাংলা, Español, العربية (right-to-left), Русский. Your choice, location and settings are saved.',
+                'Optional: start at login (opens minimised) and connect on launch. Both are off by default.',
+                'Update notice: checks GitHub releases now and then and tells you when a new version exists; nothing is installed automatically. You can turn it off.',
+                'Expand the map to fill the window with the button in its corner.',
+              ],
+            ),
+          ),
         ]);
       });
 
@@ -351,7 +462,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
         _Bullet('By default this is a local SOCKS5 proxy via Tor: apps that ignore the system proxy are not covered. Turn on System-wide mode (Linux) to cover every app; UDP such as QUIC and voice calls is then blocked, because Tor cannot carry it.'),
         _Bullet('Tor trades speed for anonymity, so expect lower speeds than a commercial VPN. Speeds shown are estimates until you connect.'),
         _Bullet('Exit relays are run by volunteers; the exit operator can see unencrypted traffic, so prefer HTTPS.'),
-        _Bullet('The app only talks to Tor Project, IP-lookup and speed-test services. It has no accounts and no telemetry.'),
+        _Bullet('The app talks to the Tor network, the Tor Project relay directory, IP-lookup and speed-test services, and GitHub (update notice, and the optional ad list). It has no accounts and no telemetry; the update check can be turned off in Settings.'),
       ]);
 }
 

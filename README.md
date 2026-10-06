@@ -30,6 +30,15 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 | 🛡️ **System-wide mode** *(optional, Linux)* | Redirects **all** TCP and DNS from **every app** into Tor with an `nftables` transparent proxy, on GNOME, KDE or any desktop. Asks for administrator permission once, in the app. |
 | 📦 **Nothing else to install** | Tor is bundled inside every package. Install the app and it works. |
 | 🎨 **Polished, responsive UI** | Glass-style dark interface that adapts from a small window to a large one, with no scroll bars, mac-style window controls and an animated About page. |
+| 🆕 **New identity & auto-rotate** | One click (or every 5–60 minutes) switches to a different relay in the same country and moves your open browser connections to it. The proxy never drops, so nothing goes direct. |
+| 🧪 **Built-in leak test** | Checks that sites see a Tor exit and not your real IP, that names are resolved inside Tor, and whether apps that ignore the proxy are covered. WebRTC needs a browser setting (the app tells you which). |
+| 🚫 **Exclude countries** | Never exit from countries you choose (presets: Five/Nine/Fourteen Eyes). Auto skips them and they cannot be selected. |
+| 🧭 **Circuit visualizer** | Draws the guard → middle → exit path on the map and lists your active circuits (relay countries, and which sites ride each one; click one to highlight it). Everything comes from Tor's own control port, so it works offline and where Tor Project web services are blocked. Zoom with the wheel or +/− and drag to pan to follow the route. Countries only, never a street address. |
+| 🌉 **Bridges** | obfs4, Snowflake, meek or your own bridge lines for networks that block Tor. Uses the `lyrebird` transport bundled with Tor (Linux x64, Windows, macOS). Not available on Linux arm64 yet, and not combinable with System-wide mode. |
+| 🚀 **Start at login / connect on launch** | Optional, off by default (Linux, Windows, macOS). |
+| 🧩 **Run an app through OnionDesk** | Pick an installed app (Linux `.desktop` files incl. Flatpak/Snap, macOS `/Applications`, Windows Start Menu) and start it with the proxy set; browsers get a private profile with remote DNS and WebRTC off. On Linux, `torsocks` (if installed) forces apps that ignore proxy settings. Windows/macOS cannot force such apps; use System-wide mode (Linux) for full coverage. True per-app kernel routing (WFP, network namespaces, Network Extensions) is not implemented. |
+| 🔔 **Update notice** | Checks GitHub releases (can be turned off in More). Nothing is installed automatically. |
+| 🌐 **6 languages** | English, हिन्दी, বাংলা, Español, العربية (right-to-left), Русский. First-draft translations; corrections welcome. |
 | 🔒 **No accounts, no telemetry** | The app only talks to the Tor network, the Tor Project relay directory, IP-lookup and speed-test services. |
 
 ---

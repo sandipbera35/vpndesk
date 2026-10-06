@@ -29,6 +29,17 @@ final Map<String, Builder> variants = {
       'ExitNodes ${c.exits.isEmpty ? '{${c.country}}' : '\$${c.exits.first}'}\nStrictNodes 1\n'
       '${_entry(c)}MaxCircuitDirtiness 86400\nNewCircuitPeriod 86400\n${_common(c)}',
 
+
+  // What the app ships today in default mode (v1.1.x): whole-country exit, IsolateDestAddr, 12 guards, long-lived circuits.
+  'current': (c) => 'SocksPort ${c.socksPort} NoIsolateSOCKSAuth NoIsolateClientAuth NoIsolateClientProtocol NoIsolateDestPort IsolateDestAddr\n'
+      'ExitNodes {${c.country}}\nStrictNodes 1\n'
+      '${_entry(c)}MaxCircuitDirtiness 86400\nNewCircuitPeriod 86400\n${_common(c)}',
+
+  // 3.1: conflux (traffic splitting over two circuits) forced on, and its client UX modes. `current` + one change.
+  'conflux': (c) => '${variants['current']!(c)}ConfluxEnabled 1\n',
+  'confluxtp': (c) => '${variants['current']!(c)}ConfluxEnabled 1\nConfluxClientUX throughput\n',
+  'confluxuxtp': (c) => '${variants['current']!(c)}ConfluxClientUX throughput\n',
+
   // 2.2: pin the top N exits by consensus weight instead of a single relay (StrictNodes stays 1).
   'exitset3': (c) => _withExit(c, _exitList(c, 3)),
   'exitset5': (c) => _withExit(c, _exitList(c, 5)),

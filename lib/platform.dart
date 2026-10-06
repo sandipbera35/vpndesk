@@ -153,29 +153,44 @@ class Plat {
     }
   }
 
+  /// AUTHENTICATE line for the control port: the password (system-wide mode's tor) or the cookie in [dataDir].
+  static Future<String?> _controlAuth({String? password, String? dataDir}) async {
+    try {
+      if (password != null) return 'AUTHENTICATE "$password"';
+      final cookie = await File('$dataDir/control_auth_cookie').readAsBytes();
+      return 'AUTHENTICATE ${cookie.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Send [commands] to the running tor's control port and return its raw answer (null if it cannot be reached).
+  static Future<String?> controlQuery(List<String> commands, {String? password, String? dataDir}) async {
+    final auth = await _controlAuth(password: password, dataDir: dataDir);
+    return auth == null ? null : _control(auth, commands);
+  }
+
   /// Close every circuit so streams that are already open (a browser's keep-alive connection) cannot keep
   /// using the previous exit: they die and are re-opened on a circuit that satisfies the new ExitNodes.
   /// [password] is for system-wide mode's tor; otherwise the cookie in [dataDir] is used.
   static Future<int> closeAllCircuits({String? password, String? dataDir}) async {
-    String auth;
-    try {
-      if (password != null) {
-        auth = 'AUTHENTICATE "$password"';
-      } else {
-        final cookie = await File('$dataDir/control_auth_cookie').readAsBytes();
-        auth = 'AUTHENTICATE ${cookie.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
-      }
-    } catch (_) {
-      return 0;
-    }
-    final status = await _control(auth, ['GETINFO circuit-status']);
+    final status = await controlQuery(['GETINFO circuit-status'], password: password, dataDir: dataDir);
     if (status == null) return 0;
     final ids = [
       for (final m in RegExp(r'^(\d+) (?:BUILT|EXTENDED|LAUNCHED)\b', multiLine: true).allMatches(status)) m.group(1)!
     ];
     if (ids.isEmpty) return 0;
-    await _control(auth, [for (final id in ids) 'CLOSECIRCUIT $id']);
+    await controlQuery([for (final id in ids) 'CLOSECIRCUIT $id'], password: password, dataDir: dataDir);
     return ids.length;
+  }
+
+  /// "New identity": tell tor to use fresh circuits (NEWNYM), then close the old ones so open connections move too.
+  /// The exit stays inside the chosen country (StrictNodes), so this only changes which relay in it is used.
+  static Future<bool> newIdentity({String? password, String? dataDir}) async {
+    final r = await controlQuery(['SIGNAL NEWNYM'], password: password, dataDir: dataDir);
+    if (r == null || !r.contains('250 OK')) return false;
+    await closeAllCircuits(password: password, dataDir: dataDir);
+    return true;
   }
 
   /// `gsettings` binary; tests point this at a fake so the real desktop settings are never touched.

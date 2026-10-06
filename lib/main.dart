@@ -3,15 +3,32 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui' show AppExitResponse, FontFeature;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'l10n.dart';
+import 'package:flutter/material.dart' as m show Text;
+import 'package:flutter/services.dart' show LogicalKeyboardKey, rootBundle;
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:socks5_proxy/socks_client.dart';
 import 'about_page.dart';
+import 'autostart.dart';
+import 'blocklist.dart';
+import 'bridges.dart';
+import 'connect_ring.dart';
+import 'blocklist_update.dart';
 import 'estimator.dart';
+import 'launch_via_tor.dart';
+import 'installed_apps.dart';
+import 'leak_test.dart';
 import 'onionoo.dart';
 import 'platform.dart';
 import 'session.dart';
+import 'socks_filter.dart';
+import 'settings_page.dart';
+import 'tools_ui.dart';
+import 'top_icons.dart';
+import 'tor_control.dart';
 import 'torrc.dart';
+import 'update_check.dart';
 import 'uninstall.dart';
 import 'uninstall_page.dart';
 import 'world_map.dart';
@@ -31,16 +48,31 @@ Map<String, List<Map<String, dynamic>>> _topExitsPerCountry(String body) {
   return top;
 }
 
-void main() {
+/// Window size from the last session (settings.json), or null on first run or if it looks wrong.
+Size? _savedWindowSize() {
+  try {
+    final m = jsonDecode(File('${Plat.configDir().path}/settings.json').readAsStringSync()) as Map;
+    final w = (m['winW'] as num?)?.toDouble(), h = (m['winH'] as num?)?.toDouble();
+    if (w != null && h != null && w >= 640 && h >= 560 && w <= 8000 && h <= 6000) return Size(w, h);
+  } catch (_) {}
+  return null;
+}
+
+/// Started by the login entry (`--autostart`): open minimised instead of in front of the user's work.
+bool launchedAtLogin = false;
+
+void main([List<String> args = const []]) {
   WidgetsFlutterBinding.ensureInitialized();
+  launchedAtLogin = args.contains(kAutostartArg);
   runApp(const OnionDeskApp());
   doWhenWindowReady(() {
     appWindow.minSize = const Size(640, 560);
-    appWindow.size = const Size(1080, 640);
+    appWindow.size = _savedWindowSize() ?? const Size(1080, 640);
     appWindow.alignment = Alignment.center;
     appWindow.title = 'OnionDesk';
     appWindow.minSize = const Size(640, 560);
     appWindow.show();
+    if (launchedAtLogin) appWindow.minimize();
   });
 }
 
@@ -113,6 +145,7 @@ class OnionDeskApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'OnionDesk',
         debugShowCheckedModeBanner: false,
+        // Arabic reads right-to-left; everything else left-to-right. Text widgets translate themselves (l10n.dart).
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF0B1220),
           cardTheme: CardThemeData(
@@ -122,7 +155,13 @@ class OnionDeskApp extends StatelessWidget {
           ),
         ),
         scrollBehavior: const MaterialScrollBehavior().copyWith(scrollbars: false),
-        builder: (context, child) => ClipRRect(borderRadius: BorderRadius.circular(18), child: child),
+        builder: (context, child) => ValueListenableBuilder<String>(
+          valueListenable: L10n.lang,
+          builder: (_, code, _) => Directionality(
+            textDirection: kRtl.contains(code) ? TextDirection.rtl : TextDirection.ltr,
+            child: ClipRRect(borderRadius: BorderRadius.circular(18), child: child),
+          ),
+        ),
         home: const HomePage(),
       );
 }
@@ -160,7 +199,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    L10n.set(L10n.systemLanguage()); // first run: the OS language; a saved choice overrides it below
     _loadSettings();
+    L10n.lang.addListener(_onLang);
+    Autostart().isEnabled().then((v) { if (mounted) setState(() => _startAtLogin = v); });
     // Undo what a previous run that was killed left behind *before* any network lookups.
     _recoverOnStart().whenComplete(() {
       if (!mounted) return;
@@ -168,6 +210,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _loadRealIp();
       _loadSpeed();
       _loadCountryStats();
+      // Opt-in: connect as soon as the app is up (after crash recovery, so a stale proxy is cleared first).
+      if (_connectOnLaunch) Future.delayed(const Duration(seconds: 2), () { if (mounted && !running && !connecting) _start(); });
     });
     _exitListener = AppLifecycleListener(onExitRequested: () async {
       await _teardown();
@@ -189,13 +233,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (_realLL == null && _ipRe.hasMatch(realIp)) _loadRealGeo(realIp);
     });
     _realTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (!running && !connecting) _loadRealIp(); });
-    _timer = Timer.periodic(const Duration(seconds: 20), (_) { _refreshStatus(); if (running && !_loadingExit && !_switching) _loadExitIp(silent: true); });
+    _timer = Timer.periodic(const Duration(seconds: 20), (_) { _refreshStatus(); if (running && !_loadingExit && !_switching) _loadExitIp(silent: true); _tickRotate(); });
+    _updateTimer = Timer.periodic(const Duration(hours: 6), (_) => _checkForUpdate());
+    Future.delayed(const Duration(seconds: 15), _checkForUpdate);
   }
 
   void _stopTimers() {
     _timer?.cancel();
     _realTimer?.cancel();
     _statsTimer?.cancel();
+    _updateTimer?.cancel();
+    _routesTimer?.cancel();
   }
 
   // ---- Uninstall (Linux, Windows) ----
@@ -250,6 +298,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   @override
   void dispose() {
+    L10n.lang.removeListener(_onLang);
     _timer?.cancel();
     _realTimer?.cancel();
     _statsTimer?.cancel();
@@ -289,6 +338,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Future<void> _teardown() => _teardownRun ??= _doTeardown().whenComplete(() => _teardownRun = null);
 
   Future<void> _doTeardown() async {
+    if (!Plat.frozen) _saveSettings(); // remembers the window size
     var clean = true;
     final tor = _tor;
     try {
@@ -308,6 +358,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
       _tor = null;
       _dropTorClient();
+      await _stopAdFilter();
       await Plat.setSystemProxy(false);
     } catch (_) {
       clean = false;
@@ -501,6 +552,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
     if (gen != _exitGen) return; // superseded: let the newer lookup report
     if (mounted) setState(() { if (result != null || !silent) exitIp = result ?? 'unavailable'; _loadingExit = false; });
+    if (result != null && !_switching) _loadCircuit();
     if (result != null && _exitLL == null && _exitNote == null && mounted && running) {
       final ip = result.split(' ').first;
       if (_ipRe.hasMatch(ip)) {
@@ -573,24 +625,402 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   DateTime _lastAutoSwitch = DateTime.fromMillisecondsSinceEpoch(0);
   File get _settingsFile => File('${_cfgDir.path}/settings.json');
 
+  void _onLang() {
+    if (mounted) setState(() {}); // tooltips and hints are plain strings: rebuild so they pick up the language too
+  }
+
   void _loadSettings() {
     try {
       final m = jsonDecode(_settingsFile.readAsStringSync()) as Map;
       _autoFastest = m['autoFastest'] == true;
       _systemWide = m['systemWide'] == true && Plat.systemWideProblem() == null;
+      _adBlock = m['adBlock'] == true;
+      _rotateMin = (m['rotateMin'] as num?)?.toInt() ?? 0;
+      _excluded = {for (final c in (m['excluded'] as List? ?? const [])) if (c is String && countries.containsKey(c)) c};
+      _checkUpdates = m['checkUpdates'] != false;
+      _dismissedUpdate = m['dismissedUpdate'] as String?;
+      _connectOnLaunch = m['connectOnLaunch'] == true;
+      _mapMax = m['mapMax'] == true;
+      _bridgeMode = bridgeModeFrom(m['bridgeMode']);
+      _customBridges = m['customBridges'] as String? ?? '';
+      L10n.set(m['lang'] is String ? m['lang'] as String : L10n.systemLanguage());
+      _recentApps = [for (final r in (m['recentApps'] as List? ?? const [])) if (r is String) r];
       final last = m['country'];
       if (last is String && countries.containsKey(last)) selectedCountry = last; // last used location
     } catch (_) {}
   }
 
+  /// Everything the user chose is written here (language, toggles, location, window size, map state), so nothing has to
+  /// be set again next launch. Written to a temp file and renamed, so a crash can never leave half a file.
   void _saveSettings() {
-    try { _settingsFile.writeAsStringSync(jsonEncode({'autoFastest': _autoFastest, 'systemWide': _systemWide, 'country': selectedCountry})); } catch (_) {}
+    _settingsTick.value++;
+    try {
+      Size? win;
+      try { win = appWindow.size; } catch (_) {} // no window in tests/probes
+      final data = jsonEncode({
+        'autoFastest': _autoFastest, 'systemWide': _systemWide, 'adBlock': _adBlock, 'rotateMin': _rotateMin,
+        'excluded': _excluded.toList()..sort(), 'checkUpdates': _checkUpdates, 'dismissedUpdate': _dismissedUpdate,
+        'connectOnLaunch': _connectOnLaunch, 'bridgeMode': _bridgeMode.name, 'customBridges': _customBridges,
+        'lang': L10n.lang.value, 'recentApps': _recentApps, 'country': selectedCountry, 'mapMax': _mapMax,
+        if (win != null && win.width >= 640 && win.height >= 560) ...{'winW': win.width.round(), 'winH': win.height.round()},
+      });
+      final tmp = File('${_settingsFile.path}.tmp')..writeAsStringSync(data);
+      tmp.renameSync(_settingsFile.path);
+    } catch (_) {}
   }
 
   void _setAuto(bool on) {
     setState(() => _autoFastest = on);
     _saveSettings();
     if (on) _autoSwitch(force: true);
+  }
+
+  // ---- Tools: new identity, auto-rotate, excluded countries, leak test, update notice, circuit view ----
+  int _rotateMin = 0; // 0 = off
+  Set<String> _excluded = {};
+  bool _checkUpdates = true;
+  String? _dismissedUpdate;
+  UpdateInfo? _update;
+  Timer? _updateTimer;
+  DateTime? _lastIdentity;
+  bool _identityBusy = false;
+  final ValueNotifier<int> _settingsTick = ValueNotifier(0); // bumps whenever a setting changes (the settings page listens)
+  bool _mapMax = false; // the map fills the whole window
+  bool _connectOnLaunch = false;
+  BridgeMode _bridgeMode = BridgeMode.none;
+  String _customBridges = '';
+  String _activeBridges = ''; // torrc lines of the connection being started
+  List<String> _recentApps = [];
+  bool _startAtLogin = false;
+  List<({String cc, String nick})> _hops = [];
+  final Map<String, String> _relayCc = {}; // relay fingerprint -> country
+
+  String? get _ctlPassArg => _sysActive ? _ctlPass : null;
+  String get _ctlDataDir => '${_cfgDir.path}/data';
+
+  /// A fresh relay in the same country: tor is told to use new circuits and the old ones are closed, so open browser
+  /// connections move too. The country stays pinned (StrictNodes), so nothing can go direct in between.
+  Future<void> _newIdentityTap() async {
+    if (!running || _switching || _identityBusy) return;
+    final last = _lastIdentity;
+    if (last != null && DateTime.now().difference(last) < const Duration(seconds: 10)) return; // tor rate-limits NEWNYM
+    setState(() => _identityBusy = true);
+    try {
+      await _switchLive(selectedCountry, fresh: true);
+    } finally {
+      if (mounted) setState(() => _identityBusy = false);
+    }
+  }
+
+  /// The chosen interval. `ONIONDESK_TEST_ROTATE_SECS` shortens it to seconds for automated tests only; it is never set normally.
+  Duration get _rotateEvery {
+    final t = int.tryParse(Platform.environment['ONIONDESK_TEST_ROTATE_SECS'] ?? '');
+    return t != null && t > 0 ? Duration(seconds: t) : Duration(minutes: _rotateMin);
+  }
+
+  void _tickRotate() {
+    if (!running) { _lastIdentity = null; return; }
+    _lastIdentity ??= DateTime.now();
+    if (_rotateMin > 0 && !_switching && !_identityBusy && DateTime.now().difference(_lastIdentity!) >= _rotateEvery) {
+      _newIdentityTap();
+    }
+  }
+
+  void _setRotate(int m) {
+    setState(() => _rotateMin = m);
+    _lastIdentity = running ? DateTime.now() : null;
+    _saveSettings();
+  }
+
+  Future<void> _editExcluded() async {
+    final r = await showExcludeDialog(context, countries: countries, initial: _excluded, locked: selectedCountry);
+    if (r == null || !mounted) return;
+    setState(() => _excluded = r);
+    _saveSettings();
+  }
+
+  Future<List<LeakCheck>> _leakTest() async {
+    Future<({String? ip, bool? tor})> check(bool viaTor) async {
+      try {
+        final j = jsonDecode(await _get('https://check.torproject.org/api/ip', viaTor: viaTor, timeout: 15)) as Map<String, dynamic>;
+        return (ip: j['IP'] as String?, tor: j['IsTor'] as bool?);
+      } catch (_) {
+        return (ip: null, tor: null);
+      }
+    }
+    final proxy = await check(true);
+    final direct = await check(false);
+    // A v3 onion address can only be reached if the client hands the *name* to tor (remote DNS): a local lookup fails.
+    bool? dns;
+    try {
+      await _get('http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/', viaTor: true, timeout: 30);
+      dns = true;
+    } catch (_) {
+      dns = null; // the onion site may simply be down: inconclusive, not a failure
+    }
+    return evaluateLeaks(LeakInputs(
+      realIp: _ipRe.hasMatch(realIp) ? realIp : null,
+      proxyIp: proxy.ip,
+      proxyIsTor: proxy.tor,
+      directIp: direct.ip,
+      directIsTor: direct.tor,
+      systemWide: _sysActive,
+      dnsViaProxyOk: dns,
+    ));
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (!_checkUpdates) return;
+    final remote = File('${_cfgDir.path}/$kRemoteListFile');
+    if (remote.existsSync() && listIsStale(remote)) _updateAdList(silent: true);
+    try {
+      final j = jsonDecode(await _get(kReleasesApi, viaTor: running && _tor != null, timeout: 15)) as Map<String, dynamic>;
+      final u = parseLatest(j, kAppVersion);
+      if (mounted && u != null && u.version != _dismissedUpdate) setState(() => _update = u);
+    } catch (_) {}
+  }
+
+  PtConfig? _ptConfig() {
+    final d = ptDirectory(Plat.bundledTorDir());
+    if (d == null) return null;
+    try { return parsePtConfig(File('${d.path}/pt_config.json').readAsStringSync()); } catch (_) { return null; }
+  }
+
+  Future<void> _editBridges() async {
+    final available = ptDirectory(Plat.bundledTorDir()) != null && _ptConfig() != null;
+    final r = await showBridgeDialog(context, mode: _bridgeMode, custom: _customBridges, available: available, locked: running || connecting);
+    if (r == null || !mounted) return;
+    setState(() { _bridgeMode = r.mode; _customBridges = r.custom; });
+    _saveSettings();
+  }
+
+  /// Start one program with the proxy set (per-app routing without touching the machine's network).
+  Future<void> _runApp() async {
+    if (!running) return;
+    final found = [for (final b in const ['firefox', 'chromium', 'google-chrome', 'brave-browser']) if (onPath(b)) b];
+    final apps = await scanInstalledApps();
+    if (!mounted) return;
+    final line = (await showLaunchDialog(context, recents: _recentApps, found: found, apps: apps))?.trim();
+    if (line == null || line.isEmpty || !mounted) return;
+    try {
+      if (line.startsWith(kLinkPrefix)) {
+        // Windows shortcut: started by the shell with the proxy variables in its environment (only apps that read them benefit).
+        const p = 'socks5h://$kSocksHost:$kSocksPort';
+        await Process.start('cmd', ['/c', 'start', '', line.substring(kLinkPrefix.length)], environment: {'ALL_PROXY': p, 'all_proxy': p}, mode: ProcessStartMode.detached);
+        setState(() {
+          _recentApps = [line, ..._recentApps.where((r) => r != line)].take(6).toList();
+          log += 'Started a Windows shortcut with the proxy set. Apps that ignore proxy settings are not covered (Windows has no per-app forcing here).\n';
+        });
+        _saveSettings();
+        return;
+      }
+      final name = splitCommand(line).first.split('/').last.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final profile = Directory('${_cfgDir.path}/app-profiles/$name')..createSync(recursive: true);
+      final spec = buildLaunch(line, profileDir: profile.path, hasTorsocks: onPath('torsocks'));
+      if (spec.args.contains('-no-remote')) File('${profile.path}/user.js').writeAsStringSync(firefoxUserJs());
+      await Process.start(spec.executable, spec.args, environment: spec.env, mode: ProcessStartMode.detached);
+      setState(() {
+        _recentApps = [line, ..._recentApps.where((r) => r != line)].take(6).toList();
+        log += 'Started "$line" through OnionDesk. ${spec.notes.join(' ')}\n';
+      });
+      _saveSettings();
+    } catch (e) {
+      if (mounted) setState(() => log += 'Could not start "$line": $e\n');
+    }
+  }
+
+  /// Download the full ad list (opt-in; also refreshed weekly when update checks are on and a list was downloaded before).
+  Future<void> _updateAdList({bool silent = false}) async {
+    if (_adListBusy) return;
+    setState(() { _adListBusy = true; if (!silent) _adListMsg = null; });
+    _settingsTick.value++;
+    try {
+      final n = await updateRemoteList((url) => _get(url, viaTor: running && _tor != null, timeout: 60), File('${_cfgDir.path}/$kRemoteListFile'));
+      _adListCount = n;
+      _adListMsg = 'Updated: $n domains (applies on the next connect)';
+    } catch (e) {
+      if (!silent) _adListMsg = 'Could not download the list: ${'$e'.replaceFirst(RegExp(r'^(Exception|Ad list not updated): ?'), '')}';
+    } finally {
+      if (mounted) setState(() => _adListBusy = false);
+      _settingsTick.value++;
+    }
+  }
+
+  /// Delete the downloaded list (the small built-in one stays). Takes effect on the next connect.
+  void _removeAdList() {
+    try {
+      final f = File('${_cfgDir.path}/$kRemoteListFile');
+      if (f.existsSync()) f.deleteSync();
+      _adListCount = null;
+      _adListMsg = 'Removed. The built-in list stays (applies on the next connect).';
+    } catch (e) {
+      _adListMsg = 'Could not remove the list: $e';
+    }
+    setState(() {});
+    _settingsTick.value++;
+  }
+
+  bool _adListBusy = false;
+  String? _adListMsg;
+  int? _adListCount;
+
+  /// One line for the settings row (English: the Text widget translates it when drawn, so a language switch updates it).
+  String _adListStatus() {
+    if (_adListBusy) return 'Downloading…';
+    if (_adListMsg != null) return _adListMsg!;
+    final f = File('${_cfgDir.path}/$kRemoteListFile');
+    try {
+      if (!f.existsSync()) return 'Not downloaded yet (about 72,000 domains)';
+      _adListCount ??= f.readAsLinesSync().where((l) => l.startsWith('0.0.0.0 ')).length;
+      final d = f.lastModifiedSync();
+      String two(int v) => v.toString().padLeft(2, '0');
+      return 'Downloaded: $_adListCount domains · ${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+    } catch (_) {
+      return 'Not downloaded yet (about 72,000 domains)';
+    }
+  }
+
+  void _dismissUpdate() {
+    _dismissedUpdate = _update?.version;
+    setState(() => _update = null);
+    _saveSettings();
+  }
+
+  /// Country of each relay in the circuit that carries traffic (guard, middle, exit), looked up once per relay.
+  Future<void> _loadCircuit() async {
+    if (!running || _tor == null || _switching) return;
+    final out = await Plat.controlQuery(['GETINFO circuit-status', 'GETINFO stream-status'], password: _ctlPassArg, dataDir: _ctlDataDir);
+    if (out == null) return;
+    final byCircuit = targetsByCircuit(parseStreamStatus(out));
+    final usable = parseCircuitStatus(out).where((c) => c.status == 'BUILT' && c.purpose == 'GENERAL' && c.hops.length >= 3).toList()
+      ..sort((a, b) {
+        final byStreams = (byCircuit[b.id]?.length ?? 0).compareTo(byCircuit[a.id]?.length ?? 0);
+        return byStreams != 0 ? byStreams : (int.tryParse(b.id) ?? 0).compareTo(int.tryParse(a.id) ?? 0);
+      });
+    final top = usable.take(6).toList();
+    if (top.isEmpty) return;
+    final missing = {for (final c in top) for (final h in c.hops) h.fingerprint}.where((f) => !_relayCc.containsKey(f)).toList();
+    if (missing.isNotEmpty) {
+      // Everything comes from tor itself (its consensus and bundled GeoIP file): no lookup leaves the machine, and it
+      // still works where the Tor Project's web services are blocked.
+      final ns = await Plat.controlQuery([for (final f in missing) 'GETINFO ns/id/$f'], password: _ctlPassArg, dataDir: _ctlDataDir);
+      final ips = ns == null ? <String>[] : parseNsIps(ns);
+      if (ips.length == missing.length) {
+        final geo = await Plat.controlQuery([for (final ip in ips) 'GETINFO ip-to-country/$ip'], password: _ctlPassArg, dataDir: _ctlDataDir);
+        final cc = geo == null ? const <String, String>{} : parseIpCountry(geo);
+        for (var i = 0; i < missing.length; i++) {
+          final code = cc[ips[i]];
+          if (code != null && code != '??') _relayCc[missing[i]] = code;
+        }
+      }
+    }
+    final routes = <CircuitRoute>[
+      for (final c in top)
+        if (c.hops.every((h) => _relayCc.containsKey(h.fingerprint)))
+          CircuitRoute(c.id, [for (final h in c.hops) (cc: _relayCc[h.fingerprint]!, nick: h.nickname)], byCircuit[c.id] ?? const []),
+    ];
+    if (!mounted || !running || _switching || routes.isEmpty) return;
+    final picked = routes.where((r) => r.id == _pickedRoute).firstOrNull ?? routes.first;
+    setState(() {
+      _routes = routes;
+      _hops = picked.hops;
+    });
+  }
+
+  List<CircuitRoute> _routes = [];
+  String? _pickedRoute; // circuit the user clicked in the list (null = the busiest one)
+  bool _routesOpen = false;
+  Timer? _routesTimer;
+
+  void _toggleRoutes() {
+    setState(() => _routesOpen = !_routesOpen);
+    _routesTimer?.cancel();
+    if (_routesOpen) {
+      _loadCircuit();
+      _routesTimer = Timer.periodic(const Duration(seconds: 4), (_) { if (running) _loadCircuit(); });
+    }
+  }
+
+  Widget _circuitPanel() {
+    final chip = GestureDetector(
+      onTap: _toggleRoutes,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: const Color(0xFF0B1424).withValues(alpha: 0.8), border: Border.all(color: _teal.withValues(alpha: 0.6))),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.hub_outlined, size: 14, color: _teal),
+            const SizedBox(width: 6),
+            Text('Circuits (${_routes.length})', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _teal)),
+            Icon(_routesOpen ? Icons.expand_more : Icons.expand_less, size: 16, color: _teal),
+          ]),
+        ),
+      ),
+    );
+    if (!_routesOpen) return chip;
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+      Container(
+        width: 330,
+        padding: const EdgeInsets.all(8),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), color: const Color(0xFF0B1424).withValues(alpha: 0.92), border: Border.all(color: Colors.white12)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 210),
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final r in _routes)
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(() { _pickedRoute = r.id; _hops = r.hops; }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: (_pickedRoute ?? _routes.first.id) == r.id ? _teal.withValues(alpha: 0.12) : null),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(r.summary, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  Text(r.hops.map((h) => h.nick).join(' › '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                  if (r.targets.isNotEmpty)
+                    Text(r.targets.length == 1 ? r.targets.first : '${r.targets.first} +${r.targets.length - 1}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: _amber)),
+                ]),
+              ),
+            ),
+          const Padding(padding: EdgeInsets.fromLTRB(8, 6, 8, 2), child: Text('Countries only. Sites shown are visible on this computer only.', style: TextStyle(fontSize: 10.5, color: Colors.white38))),
+        ])),
+        ),
+      ),
+      chip,
+    ]);
+  }
+
+  // ---- Ad/tracker blocker (default mode): a local SOCKS5 filter on 9050 in front of Tor (on 9052) ----
+  bool _adBlock = false;
+  SocksFilter? _filter;
+  int _adBlocked = 0;
+
+  void _toggleAdBlock() {
+    if (running || connecting) return;
+    setState(() => _adBlock = !_adBlock);
+    _saveSettings();
+  }
+
+  Future<void> _startAdFilter() async {
+    try {
+      final text = await rootBundle.loadString('assets/blocklist.txt');
+      final f = SocksFilter(list: Blocklist.load(text, File('${_cfgDir.path}/blocklist.txt'), remoteFile: File('${_cfgDir.path}/$kRemoteListFile')), torPort: 9052)
+        ..onBlocked = () { if (mounted) setState(() => _adBlocked = _filter?.blocked ?? 0); };
+      await f.start();
+      _filter = f;
+      _adBlocked = 0;
+      log += 'Ad blocker on (${f.list.length} domains).\n';
+    } catch (e) {
+      _filter = null;
+      log += 'Ad blocker could not start: $e\n';
+    }
+  }
+
+  Future<void> _stopAdFilter() async {
+    final f = _filter;
+    _filter = null;
+    await f?.stop();
   }
 
   // ---- Optional system-wide mode (all apps through Tor via an nftables transparent proxy) ----
@@ -678,7 +1108,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String? _bestCountry() {
     String? best;
     for (final c in countries.keys) {
-      if (_noExits.contains(c) || !(_measured.containsKey(c) || _estMbps.containsKey(c))) continue;
+      if (_noExits.contains(c) || _excluded.contains(c) || !(_measured.containsKey(c) || _estMbps.containsKey(c))) continue;
       if (best == null || _speedOf(c) > _speedOf(best)) best = c;
     }
     return best;
@@ -697,7 +1127,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
     final best = _autoRule.pick(
       current: selectedCountry,
-      candidates: countries.keys.where((c) => !_noExits.contains(c)),
+      candidates: countries.keys.where((c) => !_noExits.contains(c) && !_excluded.contains(c)),
       measured: (c) => _measured[c],
       estimate: (c) => _estMbps[c],
       now: DateTime.now(),
@@ -776,7 +1206,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       await Future.wait(countries.keys.where(top.containsKey).map((cc) async {
         final due = !_rttMs.containsKey(cc) || hot.contains(cc) || now.difference(_rttProbedAt[cc] ?? DateTime.fromMillisecondsSinceEpoch(0)) > const Duration(minutes: 10);
         // While connected, direct probes would reveal the real IP to relays: reuse the last RTT.
-        if (!running && due) {
+        if (!running && due && _bridgeMode == BridgeMode.none) { // with bridges: no direct probes of relays (they would stand out)
           double? best;
           for (final r in top[cc]!) {
             final v4 = (r['or_addresses'] as List).cast<String>().where((a) => !a.startsWith('[')).toList();
@@ -824,7 +1254,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   /// tor. SOCKS stays up and ExitNodes is strict, so traffic waits for a new circuit instead of going
   /// direct, and the real IP is never exposed mid-switch.
   /// The UI (highlight, pin) updates immediately; a newer request supersedes an older one.
-  Future<void> _switchLive(String cc) async {
+  Future<void> _switchLive(String cc, {bool fresh = false}) async {
     if (_tor == null) return;
     final gen = ++_switchGen;
     final oldIp = exitIp.split(' ').first;
@@ -835,7 +1265,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _exitLL = null; // map shows the new country's pin right away
       _exitPlace = null;
       _exitNote = null;
-      log += 'Switching to ${countries[cc]} (proxy stays on)…\n';
+      _hops = [];
+      _routes = [];
+      log += fresh ? 'New identity in ${countries[cc]} (proxy stays on)…\n' : 'Switching to ${countries[cc]} (proxy stays on)…\n';
     });
     _countryCtrl?.text = countries[cc]!;
     bool stale() => !mounted || _tor == null || gen != _switchGen;
@@ -847,7 +1279,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       // Let tor finish the reload, then close the old circuits: a browser's open keep-alive connection would otherwise
       // keep using the previous exit (the app's own IP check opens fresh connections, so it showed the change already).
       await Future.delayed(const Duration(milliseconds: 500));
-      await Plat.closeAllCircuits(password: _sysActive ? _ctlPass : null, dataDir: '${_cfgDir.path}/data');
+      if (fresh) await Plat.controlQuery(['SIGNAL NEWNYM'], password: _ctlPassArg, dataDir: _ctlDataDir);
+      await Plat.closeAllCircuits(password: _ctlPassArg, dataDir: _ctlDataDir);
+      if (fresh) _lastIdentity = DateTime.now();
       // Poll a tiny IP-only endpoint through Tor until the exit actually changes, then show it at once;
       // the full lookup (country, location pin) follows.
       for (var i = 0; i < 10 && !stale(); i++) {
@@ -866,13 +1300,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
       if (stale()) return;
       await _loadExitIp(silent: true);
-      if (!stale() && running) _loadSpeed();
+      if (!stale() && running) { _loadSpeed(); _loadCircuit(); }
     } finally {
       if (mounted && gen == _switchGen) setState(() => _switching = false);
     }
   }
 
   Future<void> _selectCountry(String cc) async {
+    if (_excluded.contains(cc)) {
+      setState(() => log += '${countries[cc]} is on your exclude list.\n');
+      return;
+    }
     if (_noExits.contains(cc) || (cc == selectedCountry && (running || connecting))) return;
     if (running && _tor != null) {
       await _switchLive(cc);
@@ -891,7 +1329,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _sidebar() {
     final list = countries.keys.toList()
       ..sort((a, b) {
-        double v(String c) => _noExits.contains(c) ? -2 : (_measured[c] ?? _estMbps[c] ?? -1);
+        double v(String c) => _noExits.contains(c) || _excluded.contains(c) ? -2 : (_measured[c] ?? _estMbps[c] ?? -1);
         return v(b).compareTo(v(a));
       });
     return Container(
@@ -928,7 +1366,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               mbps: _measured[list[i]] ?? _estMbps[list[i]],
               pingMs: _rttMs[list[i]],
               measured: _measured.containsKey(list[i]),
-              unavailable: _noExits.contains(list[i]),
+              unavailable: _noExits.contains(list[i]) || _excluded.contains(list[i]),
               code: list[i].toUpperCase(),
               selected: list[i] == selectedCountry,
               active: list[i] == selectedCountry && running,
@@ -948,8 +1386,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       exitNodes: exitNodes,
       geoipLines: Plat.geoipLines(),
       controlLines: Plat.controlLines('${_cfgDir.path}/data'),
-      entryNodes: _entryNodes,
+      entryNodes: _activeBridges.isEmpty ? _entryNodes : '', // a bridge is the entry: EntryNodes would conflict
       ownerPid: pid,
+      bridgeLines: _activeBridges,
+      socksPort: _filter != null ? 9052 : 9050,
     ));
   }
 
@@ -1019,10 +1459,29 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       setState(() => log = 'Unknown country "$typed" - pick one from the list.\n');
       return;
     }
+    if (_excluded.contains(selectedCountry)) {
+      setState(() => log = '${countries[selectedCountry]} is on your exclude list - pick another location or edit the list.\n');
+      return;
+    }
     if (_noExits.contains(selectedCountry)) {
       setState(() => log = '${countries[selectedCountry]} has no Tor exit relays - pick another location.\n');
       return;
     }
+    // Bridges (for networks that block Tor): resolved before anything on the system is touched.
+    var bridgeLines = '';
+    if (_bridgeMode != BridgeMode.none) {
+      if (_systemWide && Plat.systemWideProblem() == null) {
+        setState(() => log = 'Bridges cannot be combined with System-wide mode yet. Turn one of them off.\n');
+        return;
+      }
+      try {
+        bridgeLines = bridgeTorrc(_bridgeMode, _ptConfig(), ptDirectory(Plat.bundledTorDir())?.path.replaceAll('\\', '/'), custom: _customBridges);
+      } on ArgumentError catch (e) {
+        setState(() => log = '${e.message}\n');
+        return;
+      }
+    }
+    _activeBridges = bridgeLines;
     setState(() { connecting = true; log = ''; _bootPct = 0; });
     _saveSettings(); // remember the location for next launch
     if (Plat.linux) {
@@ -1038,7 +1497,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     // (still StrictNodes 1). Benchmarks showed no speed difference against pinning the single top relay
     // (docs/bench/DECISIONS.md), and not pinning avoids sending every user to the same volunteer relay. Once the
     // exit IP is seen, _pinExit keeps that relay so every app shows one stable IP.
-    final guards = await _topRelays('flag=Guard', 12, cacheOnly: true);
+    final guards = bridgeLines.isEmpty ? await _topRelays('flag=Guard', 12, cacheOnly: true) : <String>[];
     _entryNodes = guards.map((f) => '\$$f').join(',');
     final exitNodes = '{$selectedCountry}';
     setState(() => log += 'Connecting (any exit in ${countries[selectedCountry]})…\n');
@@ -1046,6 +1505,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       await _startSystemWide(exitNodes);
       return;
     }
+    if (_adBlock) await _startAdFilter();
     _writeTorrc(exitNodes);
     try {
       _tor = await Process.start(Plat.torExecutable(), ['-f', Plat.torPath(_torrcPath)], environment: Plat.torEnv());
@@ -1074,6 +1534,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         if (!identical(_tor, proc)) return; // a newer connection already replaced this one
         _tor = null;
         _dropTorClient();
+        await _stopAdFilter();
         await _setSystemProxy(false);
         Session.end();
         if (mounted) setState(() { running = false; connecting = false; });
@@ -1224,9 +1685,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return AnimatedBuilder(
       animation: _dotCtrl,
       builder: (_, _) {
-        final pulse = (running || connecting) ? _dotCtrl.value : 0.0;
-        return SizedBox(
-          width: 64, height: 64,
+        final pulse = running ? _dotCtrl.value : 0.0; // while connecting the progress ring takes over
+        return ConnectRing(
+          connecting: connecting,
+          running: running,
+          progress: _bootPct / 100,
           child: Stack(alignment: Alignment.center, children: [
             Container(
               width: 44 + 20 * pulse, height: 44 + 20 * pulse,
@@ -1239,13 +1702,24 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 gradient: RadialGradient(colors: [color.withValues(alpha: 0.95), color.withValues(alpha: 0.55)]),
                 boxShadow: [BoxShadow(color: color.withValues(alpha: running ? 0.6 : 0.25), blurRadius: 18)],
               ),
-              child: Icon(running ? Icons.lock : (connecting ? Icons.sync : Icons.lock_open), size: 19, color: const Color(0xFF07101F)),
+              child: connecting && _bootPct > 0
+                  ? Center(child: m.Text('$_bootPct', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF07101F), fontFeatures: [FontFeature.tabularFigures()])))
+                  : Icon(running ? Icons.lock : (connecting ? Icons.sync : Icons.lock_open), size: 19, color: const Color(0xFF07101F)),
             ),
           ]),
         );
       },
     );
   }
+
+  /// What Tor is doing at this point of its bootstrap (the percentage is shown in the ring).
+  String _bootPhase(int pct) => pct <= 10
+      ? 'Reaching the Tor network…'
+      : pct <= 40
+          ? 'Downloading the network directory…'
+          : pct <= 80
+              ? 'Fetching relay information…'
+              : 'Building your circuit…';
 
   Widget _connectButton() {
     final disabled = connecting;
@@ -1277,7 +1751,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _autoToggle() => Padding(
         padding: const EdgeInsets.only(right: 8),
         child: Tooltip(
-          message: 'Automatically use the location with the highest speed',
+          message: L10n.tr('Automatically use the location with the highest speed'),
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
@@ -1314,7 +1788,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             style: TextStyle(color: (running || _autoFastest) ? Colors.white54 : null),
             onChanged: (v) { for (final e in countries.entries) { if (e.value.toLowerCase() == v.toLowerCase()) selectedCountry = e.key; } },
             decoration: InputDecoration(
-              hintText: _autoFastest ? 'Fastest available' : 'Search a country…',
+              hintText: L10n.tr(_autoFastest ? 'Fastest available' : 'Search a country…'),
               prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: _autoToggle(),
               filled: true,
@@ -1327,6 +1801,42 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           );
         },
       );
+
+  Widget _adBlockPill() {
+    final sys = _systemWide && Plat.systemWideProblem() == null;
+    final locked = running || connecting;
+    final on = _adBlock && !sys;
+    final color = on ? _teal : Colors.white54;
+    final label = on ? (running ? 'Ad blocker: on · $_adBlocked blocked' : 'Ad blocker: on') : 'Ad blocker: off';
+    return Tooltip(
+      message: L10n.tr(sys ? 'Not available in System-wide mode yet' : (locked ? 'Disconnect to change this' : 'Block known ad and tracker domains for apps using the proxy')),
+      child: MouseRegion(
+        cursor: locked || sys ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: locked || sys ? null : _toggleAdBlock,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: (locked && !on) || sys ? 0.55 : 1,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                color: on ? _teal.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.05),
+                border: Border.all(color: on ? _teal : Colors.white24),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(on ? Icons.block : Icons.block_outlined, size: 14, color: color),
+                const SizedBox(width: 6),
+                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color))),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _systemWidePill() {
     final locked = running || connecting;
@@ -1385,6 +1895,30 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
   }
 
+  Widget _updateBanner() => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: _teal.withValues(alpha: 0.10), border: Border.all(color: _teal.withValues(alpha: 0.5))),
+          child: Row(children: [
+            const Icon(Icons.system_update_alt_rounded, color: _teal),
+            const SizedBox(width: 12),
+            Expanded(child: Text('OnionDesk ${_update!.version} is available (you have $kAppVersion).', style: const TextStyle(fontSize: 13))),
+            TextButton(onPressed: () => Plat.openUrl(_update!.url), child: const Text('Download')),
+            IconButton(icon: const Icon(Icons.close_rounded, size: 18), tooltip: L10n.tr('Dismiss'), onPressed: _dismissUpdate),
+          ]),
+        ),
+      );
+
+  Widget _newIdentityButton() {
+    final cooling = _lastIdentity != null && DateTime.now().difference(_lastIdentity!) < const Duration(seconds: 10);
+    return NewIdentityButton(
+      busy: _identityBusy || _switching,
+      tooltip: L10n.tr(running ? 'Use a different relay in ${countries[selectedCountry]} and move open connections to it' : 'Connect first'),
+      onTap: running && !cooling ? _newIdentityTap : null,
+    );
+  }
+
   Widget _blockedBanner() => Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: Container(
@@ -1413,7 +1947,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   Widget _hero(double width) {
     final title = connecting ? 'Connecting…' : (running ? 'Protected' : 'Not protected');
-    final sub = _switching ? 'Switching location — traffic stays inside Tor' : running ? '${_sysActive ? 'System-wide · ' : ''}${_autoFastest ? 'Auto-fastest · ' : ''}Exit in ${countries[selectedCountry]} · SOCKS5 127.0.0.1:9050' : (connecting ? (_bootPct > 0 ? 'Building a Tor circuit · $_bootPct%' : 'Starting Tor…') : 'Pick a country and connect');
+    final sub = _switching ? 'Switching location — traffic stays inside Tor' : running ? '${_sysActive ? 'System-wide · ' : ''}${_autoFastest ? 'Auto-fastest · ' : ''}Exit in ${countries[selectedCountry]} · SOCKS5 127.0.0.1:9050' : (connecting ? (_bootPct > 0 ? _bootPhase(_bootPct) : 'Starting Tor…') : 'Pick a country and connect');
     final head = Row(children: [
       _statusOrb(),
       const SizedBox(width: 14),
@@ -1423,7 +1957,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           const SizedBox(height: 2),
           Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 8),
-          _systemWidePill(),
+          Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [_systemWidePill(), _adBlockPill(), _newIdentityButton()]),
         ]),
       ),
     ]);
@@ -1443,6 +1977,33 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         Text(t, style: const TextStyle(fontSize: 11, color: Colors.white70, letterSpacing: 0.4)),
       ]);
 
+  void _toggleMapMax() {
+    setState(() => _mapMax = !_mapMax);
+    _saveSettings();
+  }
+
+  /// Shown while the map fills the window: the essentials, so the status is never out of sight.
+  Widget _mapStatusChip() {
+    final on = running, busy = connecting;
+    final color = on ? _teal : (busy ? _amber : Colors.white54);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), color: const Color(0xFF0B1424).withValues(alpha: 0.85), border: Border.all(color: color.withValues(alpha: 0.7))),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(on ? Icons.lock : Icons.lock_open, size: 14, color: color),
+        const SizedBox(width: 8),
+        Text(on ? 'Protected' : (busy ? 'Connecting…' : 'Not protected'), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color)),
+        if (on && exitIp.contains(RegExp(r'\d'))) Padding(padding: const EdgeInsets.only(left: 8), child: Text(exitIp.split(' — ').first, style: const TextStyle(fontSize: 12, color: Colors.white70, fontFeatures: [FontFeature.tabularFigures()]))),
+        const SizedBox(width: 8),
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 12), shape: const StadiumBorder(), backgroundColor: color.withValues(alpha: 0.18), foregroundColor: color),
+          onPressed: busy ? null : (on ? _stop : _start),
+          child: Text(on ? 'Disconnect' : 'Connect', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    );
+  }
+
   Widget _mapPanel() => Stack(children: [
         Positioned.fill(
           child: WorldMap(
@@ -1450,10 +2011,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             connected: running,
             real: _realLL,
             exit: running ? _exitLL : null,
+            hops: running ? _hops : const [],
+            countryNames: countries,
             realLabel: _realLL == null ? null : '$realIp${_realPlace == null ? '' : ' · $_realPlace'}',
             exitLabel: running && exitIp.contains(RegExp(r'\d')) ? '${exitIp.split(' — ').first}${_exitPlace == null ? '' : ' · $_exitPlace'}' : null,
           ),
         ),
+        if (running && _routes.isNotEmpty) Positioned(right: 12, bottom: 12, child: _circuitPanel()),
+        Positioned(right: 12, top: 12, child: MapExpandButton(expanded: _mapMax, onTap: _toggleMapMax)),
+        if (_mapMax) Positioned(left: 14, top: 12, child: _mapStatusChip()),
         Positioned(
           left: 14, bottom: 12,
           child: Row(children: [_legendDot(_amber, 'Real'), const SizedBox(width: 14), _legendDot(_teal, 'Exit')]),
@@ -1465,6 +2031,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final (_, speedDetail) = _split(speed);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (_recoveryNote != null) _recoveryBanner(),
+      if (_update != null) _updateBanner(),
       if (_netBlocked && !connecting && !running) _blockedBanner(),
       _hero(width),
       const SizedBox(height: 14),
@@ -1475,7 +2042,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         const SizedBox(width: 12),
         _statCard('Speed', speed, Icons.speed, const Color(0xFF7C9CFF), onRefresh: _loadSpeed, loading: _loadingSpeed, sub: speedDetail, compact: compact),
       ]),
-      const SizedBox(height: 14),
+      const SizedBox(height: 10),
       Expanded(child: _mapPanel()),
     ]);
   }
@@ -1486,15 +2053,54 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
       ]);
 
-  Widget _aboutButton() => Tooltip(
-        message: 'About OnionDesk',
-        child: TextButton.icon(
-          onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: (Plat.linux || Plat.win) ? _beginUninstall : null)),
-          style: TextButton.styleFrom(foregroundColor: Colors.white70, backgroundColor: Colors.white.withValues(alpha: 0.06), shape: const StadiumBorder()),
-          icon: const Icon(Icons.info_outline_rounded, size: 16),
-          label: const Text('About'),
-        ),
-      );
+  Widget _aboutButton() => Row(mainAxisSize: MainAxisSize.min, children: [
+        SettingsIconButton(onTap: _openSettings),
+        const SizedBox(width: 8),
+        AboutIconButton(onTap: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: (Plat.linux || Plat.win) ? _beginUninstall : null))),
+      ]);
+
+  void _openSettings() {
+    Navigator.of(context).push(settingsRoute(
+      _windowDots(),
+      SettingsActions(
+        listenable: _settingsTick,
+        languages: kLanguages,
+        lang: () => L10n.lang.value,
+        setLang: (c) { L10n.set(c); _saveSettings(); },
+        startAtLogin: () => _startAtLogin,
+        toggleStartAtLogin: () {
+          final want = !_startAtLogin;
+          Autostart().set(want).then((ok) { if (mounted && ok) { setState(() => _startAtLogin = want); _settingsTick.value++; } });
+        },
+        connectOnLaunch: () => _connectOnLaunch,
+        toggleConnectOnLaunch: () { setState(() => _connectOnLaunch = !_connectOnLaunch); _saveSettings(); },
+        checkUpdates: () => _checkUpdates,
+        toggleCheckUpdates: () {
+          setState(() => _checkUpdates = !_checkUpdates);
+          _saveSettings();
+          if (_checkUpdates) _checkForUpdate();
+        },
+        checkNow: () { _dismissedUpdate = null; _checkForUpdate(); },
+        rotateMin: () => _rotateMin,
+        setRotate: _setRotate,
+        bridgeSummary: () => _bridgeMode == BridgeMode.none ? L10n.tr('Off') : (_bridgeMode == BridgeMode.custom ? L10n.tr('My own bridges') : _bridgeMode.name),
+        editBridges: _editBridges,
+        excludedCount: () => _excluded.length,
+        editExcluded: _editExcluded,
+        adBlock: () => _adBlock,
+        adBlockLocked: () => running || connecting,
+        toggleAdBlock: _toggleAdBlock,
+        downloadAdList: _updateAdList,
+        adListStatus: _adListStatus,
+        adListBusy: () => _adListBusy,
+        adListInstalled: () => File('${_cfgDir.path}/$kRemoteListFile').existsSync(),
+        removeAdList: _removeAdList,
+        running: () => running,
+        runLeakTest: () => showLeakTest(context, _leakTest),
+        runSplitTunnel: _runApp,
+      ),
+    ));
+  }
 
   Widget _blob(Alignment a, Color c, double size) => Align(
         alignment: a,
@@ -1509,7 +2115,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _syncPulse();
         final showSidebar = box.maxWidth >= 860;
         final sideW = (box.maxWidth * 0.28).clamp(250.0, 330.0);
-        return Scaffold(
+        return CallbackShortcuts(
+          bindings: {const SingleActivator(LogicalKeyboardKey.escape): () { if (_mapMax) _toggleMapMax(); }}, // Esc restores the map
+          child: Focus(
+          autofocus: true,
+          child: Scaffold(
           extendBodyBehindAppBar: true,
           endDrawer: showSidebar ? null : Drawer(width: 300, backgroundColor: Colors.transparent, child: Padding(padding: const EdgeInsets.all(12), child: _sidebar())),
           appBar: PreferredSize(
@@ -1517,7 +2127,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             child: GestureDetector(
               onPanStart: (_) => appWindow.startDragging(),
               onDoubleTap: () => appWindow.maximizeOrRestore(),
-              child: Container(
+              // The window controls keep their place (left) in right-to-left languages too.
+              child: Directionality(textDirection: TextDirection.ltr, child: Container(
                 color: Colors.transparent,
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1539,7 +2150,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   const SizedBox(width: 6),
                   _aboutButton(),
                 ]),
-              ),
+              )),
             ),
           ),
           body: Container(
@@ -1552,14 +2163,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               // Same top/bottom padding for the dashboard and the sidebar keeps their heights equal.
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  child: _mapMax
+                      ? KeyedSubtree(key: const ValueKey('map-max'), child: _mapPanel())
+                      : KeyedSubtree(key: const ValueKey('normal'), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Expanded(child: LayoutBuilder(builder: (_, c) => _mainColumn(c.maxWidth, box.maxHeight))),
                   if (showSidebar) ...[const SizedBox(width: 16), SizedBox(width: sideW, child: _sidebar())],
-                ]),
+                ])),
+                ),
               ),
             ]),
           ),
-        );
+        )));
       });
 }
 
@@ -1774,4 +2391,14 @@ class _WinDotState extends State<_WinDot> {
           ),
         ),
       );
+}
+
+
+/// One circuit as shown in the circuit list: relays by country, and the sites using it right now.
+class CircuitRoute {
+  CircuitRoute(this.id, this.hops, this.targets);
+  final String id;
+  final List<({String cc, String nick})> hops;
+  final List<String> targets;
+  String get summary => hops.map((h) => h.cc.toUpperCase()).join(' → ');
 }

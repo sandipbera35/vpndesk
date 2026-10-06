@@ -16,9 +16,12 @@ String buildTorrc({
   required String controlLines,
   required String entryNodes,
   required int ownerPid,
+  int socksPort = 9050, // 9052 when the ad blocker's filter owns 9050
+  String bridgeLines = '', // 'UseBridges 1' + transport + Bridge lines from bridges.dart ('' = direct)
 }) =>
-    'SocksPort 9050 NoIsolateSOCKSAuth NoIsolateClientAuth NoIsolateClientProtocol NoIsolateDestPort IsolateDestAddr\n'
+    'SocksPort $socksPort NoIsolateSOCKSAuth NoIsolateClientAuth NoIsolateClientProtocol NoIsolateDestPort IsolateDestAddr\n'
     'DataDirectory $dataDir/data\nExitNodes $exitNodes\nStrictNodes 1\n'
     '$geoipLines$controlLines'
     '${entryNodes.isEmpty ? '' : 'EntryNodes $entryNodes\n'}'
+    '$bridgeLines'
     'MaxCircuitDirtiness 86400\nNewCircuitPeriod 86400\n__OwningControllerProcess $ownerPid\n';

@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'l10n.dart' show L10n;
 
 /// (latitude, longitude) in degrees.
 typedef LatLon = ({double lat, double lon});
@@ -31,12 +33,16 @@ class _Country {
 /// Offline world map: highlights the selected country, pins the real and exit locations
 /// with animated pulses, and draws an animated link between them while connected.
 class WorldMap extends StatefulWidget {
-  const WorldMap({super.key, required this.country, required this.connected, this.real, this.exit, this.realLabel, this.exitLabel, this.height});
+  const WorldMap({super.key, required this.country, required this.connected, this.real, this.exit, this.realLabel, this.exitLabel, this.height, this.hops = const [], this.countryNames = const {}});
   final String country; // lower-case ISO-2
   final bool connected;
   final LatLon? real, exit;
   final String? realLabel, exitLabel; // e.g. '1.2.3.4 · Haldia, India'
   final double? height; // null = fill the parent
+  /// Relays of the circuit in use, guard first: [cc] is the relay's country (country-level, never a street address).
+  final List<({String cc, String nick})> hops;
+  /// Lower-case ISO code -> display name, for the guard/middle labels.
+  final Map<String, String> countryNames;
   @override
   State<WorldMap> createState() => _WorldMapState();
 }
@@ -88,16 +94,58 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // ---- zoom / pan (mouse wheel, drag, pinch, double-click, +/- buttons) ----
+  static const _minZoom = 1.0, _maxZoom = 14.0;
+  double _zoom = 1;
+  Offset _pan = Offset.zero;
+  double _gZoom = 1;
+  Offset _gPan = Offset.zero, _gFocal = Offset.zero;
+
+  /// Keep the map covering the view: it can be dragged, never off into empty space.
+  Offset _clampPan(Offset p, double z, Size s) => Offset(p.dx.clamp(s.width * (1 - z), 0.0).toDouble(), p.dy.clamp(s.height * (1 - z), 0.0).toDouble());
+
+  /// Zoom to [z] keeping the map point under [focal] where it is.
+  void _zoomAt(double z, Offset focal, Size s) {
+    final nz = z.clamp(_minZoom, _maxZoom).toDouble();
+    final k = nz / _zoom;
+    setState(() {
+      _pan = _clampPan(focal - (focal - _pan) * k, nz, s);
+      _zoom = nz;
+    });
+  }
+
+  void _resetView() => setState(() { _zoom = 1; _pan = Offset.zero; });
+
   @override
-  Widget build(BuildContext context) => ClipRRect(
+  Widget build(BuildContext context) => LayoutBuilder(builder: (ctx, box) => _mapBox(box.biggest));
+
+  Widget _mapBox(Size size) => ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: Container(
           height: widget.height,
           width: double.infinity,
           decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04), border: Border.all(color: Colors.white.withValues(alpha: 0.09)), borderRadius: BorderRadius.circular(20)),
-          child: Stack(fit: StackFit.expand, children: [
+          child: Listener(
+            onPointerSignal: (e) {
+              if (e is PointerScrollEvent) _zoomAt(_zoom * math.exp(-e.scrollDelta.dy / 400), e.localPosition, size);
+            },
+            child: MouseRegion(
+              cursor: _zoom > 1 ? SystemMouseCursors.grab : MouseCursor.defer,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onScaleStart: (d) { _gZoom = _zoom; _gPan = _pan; _gFocal = d.localFocalPoint; },
+                onScaleUpdate: (d) {
+                  final nz = (_gZoom * d.scale).clamp(_minZoom, _maxZoom).toDouble();
+                  // the map point that was under the first touch follows the fingers/cursor (pan) and scales (pinch)
+                  setState(() {
+                    _pan = _clampPan(d.localFocalPoint - (_gFocal - _gPan) * (nz / _gZoom), nz, size);
+                    _zoom = nz;
+                  });
+                },
+                onDoubleTapDown: (d) => _zoomAt(_zoom * 2, d.localPosition, size),
+                child: Stack(fit: StackFit.expand, children: [
             // Land + grid never animate: paint once per size/selection instead of 60 times a second.
-            RepaintBoundary(child: CustomPaint(painter: _MapPainter(base: true, countries: _countries, country: widget.country, connected: widget.connected, t: 0, dropReal: 0, dropExit: 0))),
+            RepaintBoundary(child: CustomPaint(painter: _MapPainter(base: true, countries: _countries, country: widget.country, connected: widget.connected, zoom: _zoom, pan: _pan, t: 0, dropReal: 0, dropExit: 0))),
             RepaintBoundary(
               child: AnimatedBuilder(
                 animation: Listenable.merge([_loop, _dropReal, _dropExit]),
@@ -111,6 +159,10 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
                     exit: widget.exit,
                     realLabel: widget.realLabel,
                     exitLabel: widget.exitLabel,
+                    hops: widget.hops,
+                    countryNames: widget.countryNames,
+                    zoom: _zoom,
+                    pan: _pan,
                     t: _loop.value,
                     dropReal: Curves.bounceOut.transform(_dropReal.value),
                     dropExit: Curves.bounceOut.transform(_dropExit.value),
@@ -118,20 +170,84 @@ class _WorldMapState extends State<WorldMap> with TickerProviderStateMixin {
                 ),
               ),
             ),
-          ]),
+            // zoom controls (top right, under the expand button)
+            Positioned(
+              right: 12,
+              top: 50,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                _ZoomButton(icon: Icons.add_rounded, tooltip: 'Zoom in', onTap: () => _zoomAt(_zoom * 1.6, size.center(Offset.zero), size)),
+                const SizedBox(height: 6),
+                _ZoomButton(icon: Icons.remove_rounded, tooltip: 'Zoom out', onTap: _zoom > 1 ? () => _zoomAt(_zoom / 1.6, size.center(Offset.zero), size) : null),
+                if (_zoom > 1) ...[
+                  const SizedBox(height: 6),
+                  _ZoomButton(icon: Icons.fit_screen_rounded, tooltip: 'Reset view', onTap: _resetView),
+                ],
+              ]),
+            ),
+                ]),
+              ),
+            ),
+          ),
         ),
       );
 }
 
+/// Small round glass button for the map's zoom controls.
+class _ZoomButton extends StatefulWidget {
+  const _ZoomButton({required this.icon, required this.tooltip, required this.onTap});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  @override
+  State<_ZoomButton> createState() => _ZoomButtonState();
+}
+
+class _ZoomButtonState extends State<_ZoomButton> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    final on = widget.onTap != null;
+    return Tooltip(
+      message: L10n.tr(widget.tooltip),
+      child: MouseRegion(
+        cursor: on ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF0B1424).withValues(alpha: 0.85),
+              border: Border.all(color: const Color(0xFF2DE2C4).withValues(alpha: on ? (_hover ? 0.95 : 0.5) : 0.2)),
+              boxShadow: [BoxShadow(color: const Color(0xFF2DE2C4).withValues(alpha: on && _hover ? 0.35 : 0), blurRadius: 10)],
+            ),
+            child: Icon(widget.icon, size: 16, color: on ? const Color(0xFF2DE2C4) : Colors.white24),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MapPainter extends CustomPainter {
-  _MapPainter({required this.base, required this.countries, required this.country, required this.connected, this.real, this.exit, this.realLabel, this.exitLabel, required this.t, required this.dropReal, required this.dropExit});
+  _MapPainter({required this.base, required this.countries, required this.country, required this.connected, this.real, this.exit, this.realLabel, this.exitLabel, this.hops = const [], this.countryNames = const {}, this.zoom = 1, this.pan = Offset.zero, required this.t, required this.dropReal, required this.dropExit});
   final bool base; // true: static land layer, false: highlight/pins/link layer
   final List<_Country>? countries;
   final String country;
   final bool connected;
   final LatLon? real, exit;
   final String? realLabel, exitLabel;
+  final List<({String cc, String nick})> hops;
+  final Map<String, String> countryNames;
+  final double zoom; // 1 = whole world fits the view
+  final Offset pan; // screen offset of the zoomed map
   final double t, dropReal, dropExit;
+
+  Offset _sp(Offset p) => p * zoom + pan; // map coordinates -> screen
 
   static const Map<String, LatLon> _pointCountries = {
     'sg': (lat: 1.35, lon: 103.82),
@@ -176,29 +292,38 @@ class _MapPainter extends CustomPainter {
     final paths = _pathsFor(cs, size, proj);
 
     if (base) {
-      final grid = Paint()..color = const Color(0xFF16233A)..strokeWidth = 0.6;
+      // Land is vector: drawn through the zoom transform (crisp at any zoom), hairlines kept hairlines.
+      canvas.save();
+      canvas.translate(pan.dx, pan.dy);
+      canvas.scale(zoom);
+      final grid = Paint()..color = const Color(0xFF16233A)..strokeWidth = 0.6 / zoom;
       for (var lon = -180; lon <= 180; lon += 30) { canvas.drawLine(proj(lon.toDouble(), maxLat), proj(lon.toDouble(), minLat), grid); }
       for (var lat = -60; lat <= 80; lat += 20) { canvas.drawLine(proj(-180, lat.toDouble()), proj(180, lat.toDouble()), grid); }
       final land = Paint()..color = const Color(0xFF3A5278).withValues(alpha: 0.45);
-      final edge = Paint()..color = const Color(0xFF6E8DBA).withValues(alpha: 0.5)..style = PaintingStyle.stroke..strokeWidth = 0.5;
+      final edge = Paint()..color = const Color(0xFF6E8DBA).withValues(alpha: 0.5)..style = PaintingStyle.stroke..strokeWidth = 0.5 / zoom;
       for (var i = 0; i < cs.length; i++) {
         if (cs[i].code == country) continue;
         canvas.drawPath(paths[i], land);
         canvas.drawPath(paths[i], edge);
       }
+      canvas.restore();
       return;
     }
 
     final hi = Paint()..color = (connected ? Colors.tealAccent : Colors.amberAccent).withValues(alpha: 0.35 + 0.2 * math.sin(t * 2 * math.pi));
-    final hiEdge = Paint()..color = connected ? Colors.tealAccent : Colors.amberAccent..style = PaintingStyle.stroke..strokeWidth = 1.2;
+    final hiEdge = Paint()..color = connected ? Colors.tealAccent : Colors.amberAccent..style = PaintingStyle.stroke..strokeWidth = 1.2 / zoom;
 
     Offset? fallback;
+    canvas.save();
+    canvas.translate(pan.dx, pan.dy);
+    canvas.scale(zoom);
     for (var i = 0; i < cs.length; i++) {
       if (cs[i].code != country) continue;
       canvas.drawPath(paths[i], hi);
       canvas.drawPath(paths[i], hiEdge);
       fallback = proj(cs[i].center.dx, cs[i].center.dy);
     }
+    canvas.restore();
 
     // Countries too small for the bundled outlines (no polygon) still get a pin at a fixed point.
     if (fallback == null) {
@@ -206,21 +331,34 @@ class _MapPainter extends CustomPainter {
       if (c != null) fallback = proj(c.lon, c.lat);
     }
 
-    final realP = real == null ? null : proj(real!.lon, real!.lat);
-    final exitP = exit != null ? proj(exit!.lon, exit!.lat) : (connected ? fallback : null);
+    // From here on everything (pins, labels, route) is in screen space: sizes stay constant while the map zooms.
+    final realP = real == null ? null : _sp(proj(real!.lon, real!.lat));
+    final exitP = exit != null ? _sp(proj(exit!.lon, exit!.lat)) : (connected && fallback != null ? _sp(fallback) : null);
 
-    // Animated link real -> exit.
+    // Animated link real -> (guard -> middle ->) exit. Relay positions are country centres: tor does not tell us more,
+    // and showing less is the safer default.
     if (realP != null && exitP != null && connected) {
-      final mid = Offset((realP.dx + exitP.dx) / 2, math.min(realP.dy, exitP.dy) - (realP - exitP).distance * 0.25);
-      final path = Path()..moveTo(realP.dx, realP.dy)..quadraticBezierTo(mid.dx, mid.dy, exitP.dx, exitP.dy);
+      Offset? hopAt(String cc) {
+        for (final c in cs) { if (c.code == cc) return _sp(proj(c.center.dx, c.center.dy)); }
+        final q = _pointCountries[cc];
+        return q == null ? null : _sp(proj(q.lon, q.lat));
+      }
+      final relays = [for (final h in hops) hopAt(h.cc)];
       final line = Paint()..color = Colors.tealAccent.withValues(alpha: 0.35)..style = PaintingStyle.stroke..strokeWidth = 1.2;
-      for (final m in path.computeMetrics()) {
-        for (var d = -t * 14; d < m.length; d += 14) {
-          final a = math.max(0.0, d), b = math.min(m.length, d + 7);
-          if (b > a) canvas.drawPath(m.extractPath(a, b), line);
+      if (hops.length >= 3 && relays.every((e) => e != null)) {
+        // hops = guard, middle, exit; the exit uses the real pin position
+        final pts = [realP, relays[0]!, relays[1]!, exitP];
+        for (var i = 0; i + 1 < pts.length; i++) { _flow(canvas, pts[i], pts[i + 1], (t + i / 3) % 1, line); }
+        for (var i = 0; i < 2; i++) {
+          canvas.drawCircle(pts[i + 1], 4.5, Paint()..color = const Color(0xFF0B1424));
+          canvas.drawCircle(pts[i + 1], 3.4, Paint()..color = i == 0 ? Colors.amberAccent : Colors.white70);
+          final role = L10n.tr(i == 0 ? 'guard' : 'middle');
+          final where = countryNames[hops[i].cc] ?? hops[i].cc.toUpperCase();
+          // Guard label goes below its dot, middle label above, so two close dots do not cover each other.
+          _hopLabel(canvas, size, pts[i + 1], '$role · $where', i == 0 ? Colors.amberAccent : Colors.white70, above: i == 1);
         }
-        final tan = m.getTangentForOffset(m.length * t);
-        if (tan != null) canvas.drawCircle(tan.position, 2.5, Paint()..color = Colors.white);
+      } else {
+        _flow(canvas, realP, exitP, t, line);
       }
     }
 
@@ -228,8 +366,36 @@ class _MapPainter extends CustomPainter {
     if (exitP != null && connected) _pin(canvas, exitP, Colors.tealAccent, exit != null ? dropExit : 1, (t + 0.5) % 1);
     // Labels last so they sit on top; if the pins are close, stack the second one below.
     final close = realP != null && exitP != null && connected && (realP - exitP).distance < 90;
-    if (realP != null && realLabel != null) _label(canvas, size, realP, 'REAL  $realLabel', Colors.amberAccent, false);
-    if (exitP != null && connected && exitLabel != null) _label(canvas, size, exitP, 'EXIT  $exitLabel', Colors.tealAccent, close);
+    if (realP != null && realLabel != null) _label(canvas, size, realP, '${L10n.tr('REAL')}  $realLabel', Colors.amberAccent, false);
+    if (exitP != null && connected && exitLabel != null) _label(canvas, size, exitP, '${L10n.tr('EXIT')}  $exitLabel', Colors.tealAccent, close);
+  }
+
+  void _hopLabel(Canvas canvas, Size size, Offset p, String text, Color color, {required bool above}) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w600)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final w = tp.width + 12, h = tp.height + 5;
+    final x = (p.dx - w / 2).clamp(4.0, math.max(4.0, size.width - w - 4)).toDouble();
+    final y = (above ? p.dy - 10 - h : p.dy + 9).clamp(4.0, math.max(4.0, size.height - h - 4)).toDouble();
+    final r = RRect.fromRectAndRadius(Rect.fromLTWH(x, y, w, h), const Radius.circular(8));
+    canvas.drawRRect(r, Paint()..color = const Color(0xFF0B1424).withValues(alpha: 0.78));
+    canvas.drawRRect(r, Paint()..color = color.withValues(alpha: 0.85)..style = PaintingStyle.stroke..strokeWidth = 1);
+    tp.paint(canvas, Offset(x + 6, y + 2.5));
+  }
+
+  /// One arc from [a] to [b] with moving dashes and a travelling dot.
+  void _flow(Canvas canvas, Offset a, Offset b, double t, Paint line) {
+    final mid = Offset((a.dx + b.dx) / 2, math.min(a.dy, b.dy) - (a - b).distance * 0.25);
+    final path = Path()..moveTo(a.dx, a.dy)..quadraticBezierTo(mid.dx, mid.dy, b.dx, b.dy);
+    for (final m in path.computeMetrics()) {
+      for (var d = -t * 14; d < m.length; d += 14) {
+        final s0 = math.max(0.0, d), e0 = math.min(m.length, d + 7);
+        if (e0 > s0) canvas.drawPath(m.extractPath(s0, e0), line);
+      }
+      final tan = m.getTangentForOffset(m.length * t);
+      if (tan != null) canvas.drawCircle(tan.position, 2.5, Paint()..color = Colors.white);
+    }
   }
 
   void _label(Canvas canvas, Size size, Offset p, String text, Color color, bool below) {
@@ -267,5 +433,5 @@ class _MapPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MapPainter o) => !base || o.country != country || !identical(o.countries, countries);
+  bool shouldRepaint(_MapPainter o) => !base || o.country != country || !identical(o.countries, countries) || o.zoom != zoom || o.pan != pan;
 }

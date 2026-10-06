@@ -65,6 +65,7 @@ Priority: optional
 Architecture: $DEBARCH
 Depends: libgtk-3-0, libc6 (>= 2.34), nftables$EXTRA_DEB
 Recommends: policykit-1 | polkitd, pkexec | policykit-1
+Suggests: torsocks
 Maintainer: Sandip Bera <sandipbera35@gmail.com>
 Homepage: https://github.com/sandipbera35/vpndesk
 Description: Free Tor VPN alternative: pick your exit country
@@ -96,6 +97,7 @@ URL: https://github.com/sandipbera35/vpndesk
 BuildArch: $RPMARCH
 Requires: gtk3, nftables$EXTRA_RPM
 Recommends: polkit
+Suggests: torsocks
 AutoReqProv: no
 Source0: oniondesk-${VERSION}-bundle.tar.gz
 
