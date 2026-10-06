@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:ui' show AppExitResponse, FontFeature;
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -15,14 +16,26 @@ import 'uninstall.dart';
 import 'uninstall_page.dart';
 import 'world_map.dart';
 
+/// Up to three non-BadExit relays per country from an Onionoo `details` body (runs off the UI isolate).
+Map<String, List<Map<String, dynamic>>> _topExitsPerCountry(String body) {
+  final top = <String, List<Map<String, dynamic>>>{};
+  for (final r in (jsonDecode(body)['relays'] as List).cast<Map<String, dynamic>>()) {
+    final cc = r['country'] as String?;
+    if (cc == null || (r['flags'] as List).contains('BadExit')) continue;
+    final l = top.putIfAbsent(cc, () => []);
+    if (l.length < 3) l.add(r);
+  }
+  return top;
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const VpnDeskApp());
+  runApp(const OnionDeskApp());
   doWhenWindowReady(() {
     appWindow.minSize = const Size(640, 560);
     appWindow.size = const Size(1080, 640);
     appWindow.alignment = Alignment.center;
-    appWindow.title = 'VPN Desk';
+    appWindow.title = 'OnionDesk';
     appWindow.minSize = const Size(640, 560);
     appWindow.show();
   });
@@ -38,11 +51,11 @@ const countries = {
   'mx': 'Mexico', 'ar': 'Argentina', 'hk': 'Hong Kong', 'tw': 'Taiwan', 'za': 'South Africa',
 };
 
-class VpnDeskApp extends StatelessWidget {
-  const VpnDeskApp({super.key});
+class OnionDeskApp extends StatelessWidget {
+  const OnionDeskApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'VPN Desk',
+        title: 'OnionDesk',
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF0B1220),
@@ -131,9 +144,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   // ---- Uninstall (Linux) ----
 
-  /// Ask, then run the uninstall page. `VPNDESK_UNINSTALL_DRYRUN=1` previews the whole flow and removes nothing.
+  /// Ask, then run the uninstall page. `ONIONDESK_UNINSTALL_DRYRUN=1` previews the whole flow and removes nothing.
   Future<void> _beginUninstall() async {
-    final dry = Platform.environment['VPNDESK_UNINSTALL_DRYRUN'] == '1';
+    final dry = Platform.environment['ONIONDESK_UNINSTALL_DRYRUN'] == '1';
     UninstallPlan planFor(bool data) => UninstallPlan.detect(exe: Platform.resolvedExecutable, env: Platform.environment, deleteData: data);
     final deleteData = await showUninstallConfirm(context, planFor: planFor, dryRun: dry);
     if (deleteData == null || !mounted) return;
@@ -194,7 +207,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String? _recoveryNote; // shown as a banner after an unclean previous exit
   bool _recoveryFailed = false;
 
-  /// Undo what an earlier, killed run left behind (proxy, orphaned tor, firewall) via `vpndesk-restore`.
+  /// Undo what an earlier, killed run left behind (proxy, orphaned tor, firewall) via `oniondesk-restore`.
   Future<void> _recoverOnStart() async {
     if (!Plat.linux) return;
     final rc = await Plat.runRestore();
@@ -203,7 +216,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _recoveryFailed = rc != 10;
       _recoveryNote = rc == 10
           ? 'Recovered from an unclean exit: your previous network settings were restored.'
-          : 'The last session did not exit cleanly and some settings could not be restored. Run  vpndesk-restore  in a terminal.';
+          : 'The last session did not exit cleanly and some settings could not be restored. Run  oniondesk-restore  in a terminal.';
     });
   }
 
@@ -458,7 +471,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (secs <= 0 || n == 0) throw 'no data';
       final mbps = n * 8 / 1e6 / secs;
       if (viaTor && running) _saveMeasured(selectedCountry, mbps);
-      if (mounted) setState(() => speed = '${mbps.toStringAsFixed(1)} Mbps · ${viaTor ? 'via VPN Desk' : 'direct'}');
+      if (mounted) setState(() => speed = '${mbps.toStringAsFixed(1)} Mbps · ${viaTor ? 'via OnionDesk' : 'direct'}');
     } catch (_) {
       if (mounted) setState(() => speed = 'unavailable');
     } finally {
@@ -535,7 +548,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         content: const SizedBox(
           width: 460,
           child: Text(
-            'When you connect, VPN Desk will ask for your administrator password once, then send all TCP traffic and DNS from every app through Tor, on any desktop (GNOME, KDE, …).\n\n'
+            'When you connect, OnionDesk will ask for your administrator password once, then send all TCP traffic and DNS from every app through Tor, on any desktop (GNOME, KDE, …).\n\n'
             '• Tor cannot carry UDP, so QUIC/HTTP3, games and voice calls are blocked while connected (browsers fall back to HTTPS).\n'
             '• IPv6 is blocked; local-network addresses (192.168.x.x etc.) stay direct.\n'
             '• If Tor crashes, traffic stays blocked until you press Restore, so nothing leaks.\n'
@@ -573,7 +586,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       setState(() => _netBlocked = false);
       _loadRealIp();
     } else {
-      await _info('Could not restore', 'Administrator permission was not granted. Try again, or run:  pkexec ${Plat.helperPath ?? 'vpndesk-net'} stop');
+      await _info('Could not restore', 'Administrator permission was not granted. Try again, or run:  pkexec ${Plat.helperPath ?? 'oniondesk-net'} stop');
     }
   }
 
@@ -680,13 +693,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     try {
       final out = await _onionoo.get('details?flag=Exit&running=true&fields=country,observed_bandwidth,or_addresses,flags,fingerprint&limit=3000&order=-consensus_weight');
       if (out == null) throw 'no relay data';
-      final top = <String, List<Map<String, dynamic>>>{};
-      for (final r in (jsonDecode(out)['relays'] as List).cast<Map<String, dynamic>>()) {
-        final cc = r['country'] as String?;
-        if (cc == null || (r['flags'] as List).contains('BadExit')) continue;
-        final l = top.putIfAbsent(cc, () => []);
-        if (l.length < 3) l.add(r);
-      }
+      // ~1 MB of JSON: decoding it on the UI isolate dropped frames every minute.
+      final top = await Isolate.run(() => _topExitsPerCountry(out));
       final est = <String, double>{}, rtts = <String, double>{};
       final now = DateTime.now();
       // Probe the selected country and the current top few every minute; the rest only every 10 minutes
@@ -1018,7 +1026,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         setState(() {
           log += s;
           _trackBootstrap(s);
-          if (s.contains('VPNDESK_BLOCKED')) _netBlocked = true;
+          if (s.contains('ONIONDESK_BLOCKED')) _netBlocked = true;
           if (s.contains('Bootstrapped 100%')) {
             connecting = false;
             running = true;
@@ -1398,7 +1406,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       ]);
 
   Widget _aboutButton() => Tooltip(
-        message: 'About VPN Desk',
+        message: 'About OnionDesk',
         child: TextButton.icon(
           onPressed: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: Plat.linux ? _beginUninstall : null)),
           style: TextButton.styleFrom(foregroundColor: Colors.white70, backgroundColor: Colors.white.withValues(alpha: 0.06), shape: const StadiumBorder()),
@@ -1439,7 +1447,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   const SizedBox(width: 16),
                   ClipRRect(borderRadius: BorderRadius.circular(5), child: Image.asset('assets/icon.png', width: 20, height: 20, filterQuality: FilterQuality.medium)),
                   const SizedBox(width: 8),
-                  const Text('VPN Desk', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, letterSpacing: 0.3)),
+                  const Text('OnionDesk', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, letterSpacing: 0.3)),
                   const Spacer(),
                   if (!showSidebar)
                     Builder(builder: (ctx) => TextButton.icon(

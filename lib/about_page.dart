@@ -143,7 +143,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
           ),
         ),
         const SizedBox(height: 16),
-        const Text('VPN Desk', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+        const Text('OnionDesk', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
         const SizedBox(height: 6),
         const Text('Pick a country. Browse through Tor. No account, no subscription.',
             textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 14)),
@@ -269,7 +269,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
               points: [
                 'Optional and off by default. Works on GNOME, KDE and other desktops.',
                 'Asks for your administrator password once when you connect, then adds nftables rules that redirect all TCP and DNS into Tor.',
-                'Tor itself runs as a separate "vpndesk" user so its own traffic is not redirected.',
+                'Tor itself runs as a separate "oniondesk" user so its own traffic is not redirected.',
                 'UDP (QUIC/HTTP3, games, voice calls) and IPv6 are blocked, because Tor cannot carry them. Local-network addresses stay direct.',
                 'Disconnecting or closing the app restores normal networking. If Tor crashes, traffic stays blocked until you press Restore, so nothing leaks.',
                 'Off: only apps that use the system proxy (SOCKS5 127.0.0.1:9050) go through Tor.',
@@ -311,7 +311,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
           const SizedBox(width: 12),
           const Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Uninstall VPN Desk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              Text('Uninstall OnionDesk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               SizedBox(height: 6),
               Text('Removes the app, its system helper and (if you choose) your settings from this computer. You will be asked to confirm.',
                   style: TextStyle(color: Colors.white60, height: 1.45, fontSize: 13.5)),

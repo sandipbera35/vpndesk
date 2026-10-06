@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🛡️ VPN Desk
+# 🛡️ OnionDesk
 
-**Pick a country. Browse through Tor. No account, no subscription.**
+**A free, open-source Tor VPN alternative: pick an exit country and browse anonymously. No account, no subscription.**
 
 A modern desktop app that starts a bundled [Tor](https://www.torproject.org) client with a **strict exit in the country you choose**, shows your real and exit locations on a live map, ranks countries by **live speed estimates**, and can optionally route **every app on your computer** through Tor.
 
@@ -24,7 +24,7 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 |---|---|
 | 🌍 **Country exits** | Choose from dozens of countries. Tor is configured with `ExitNodes` pinned to the fastest relay there and `StrictNodes 1`, so you never silently fall back to another country. |
 | ⚡ **Live speed estimates** | Every minute the app measures real round-trip time to relays in each country, caps it by relay bandwidth, and calibrates against speeds you have actually measured through Tor. The sidebar shows `~Mbps · ms` per country, always up to date. |
-| 🤖 **Auto (fastest) mode** | One click and VPN Desk always uses the highest-speed location, switching only when another is **≥ 25 % faster** and at most every **5 minutes**, so it never flaps. |
+| 🤖 **Auto (fastest) mode** | One click and OnionDesk always uses the highest-speed location, switching only when another is **≥ 25 % faster** and at most every **5 minutes**, so it never flaps. |
 | 🔁 **Leak-free location switching** | Changing country edits the live Tor config instead of restarting it. The proxy never drops, so your real IP is not exposed mid-switch. |
 | 🗺️ **Live world map** | Highlights the selected country and pins your **real IP** and **exit IP** at their locations with animated pins, ripples and a flowing link between them. Works fully offline (bundled Natural Earth data). |
 | 🛡️ **System-wide mode** *(optional, Linux)* | Redirects **all** TCP and DNS from **every app** into Tor with an `nftables` transparent proxy, on GNOME, KDE or any desktop. Asks for administrator permission once, in the app. |
@@ -36,28 +36,48 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 
 ## 📥 Install
 
+### Install from the repository (recommended: updates arrive with your system updates)
+
+```bash
+# Debian / Ubuntu / Mint
+curl -fsSL https://sandipbera35.github.io/vpndesk/oniondesk.gpg | sudo tee /usr/share/keyrings/oniondesk.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/oniondesk.gpg] https://sandipbera35.github.io/vpndesk/apt stable main" | sudo tee /etc/apt/sources.list.d/oniondesk.list
+sudo apt update && sudo apt install oniondesk
+
+# Fedora / RHEL / openSUSE
+sudo curl -fsSL -o /etc/yum.repos.d/oniondesk.repo https://sandipbera35.github.io/vpndesk/oniondesk.repo
+sudo dnf install oniondesk
+
+# Arch / Manjaro (AUR)
+yay -S oniondesk-bin
+```
+
+Package names are lowercase (`oniondesk`). After the one-time repository setup, `sudo apt install oniondesk` / `sudo dnf install oniondesk` work directly.
+
+### Or download a package manually
+
 Download the package for your machine from the [**Releases**](https://github.com/sandipbera35/vpndesk/releases) page:
 
 | Your system | Package |
 |---|---|
-| Debian / Ubuntu / Mint, Intel/AMD | `vpn-desk_<version>_amd64.deb` |
-| Debian / Ubuntu / Mint, ARM64 | `vpn-desk_<version>_arm64.deb` |
-| Fedora / RHEL / openSUSE, Intel/AMD | `vpn-desk-<version>-1.x86_64.rpm` |
-| Fedora / RHEL / openSUSE, ARM64 | `vpn-desk-<version>-1.aarch64.rpm` |
+| Debian / Ubuntu / Mint, Intel/AMD | `oniondesk_<version>_amd64.deb` |
+| Debian / Ubuntu / Mint, ARM64 | `oniondesk_<version>_arm64.deb` |
+| Fedora / RHEL / openSUSE, Intel/AMD | `oniondesk-<version>-1.x86_64.rpm` |
+| Fedora / RHEL / openSUSE, ARM64 | `oniondesk-<version>-1.aarch64.rpm` |
 
 ```bash
 # Debian / Ubuntu  (use the file name you downloaded)
-sudo apt install ./vpn-desk_<version>_amd64.deb
+sudo apt install ./oniondesk_<version>_amd64.deb
 
 # Fedora / RHEL / openSUSE
-sudo dnf install ./vpn-desk-<version>-1.x86_64.rpm
+sudo dnf install ./oniondesk-<version>-1.x86_64.rpm
 ```
 
 GNOME Software / Discover may label a locally downloaded package "third party" (it isn't from a signed repository); that is expected.
 
 Always take the **latest** release. (`v1.0.1` installed files with the wrong owner and `v1.0.2`–`v1.0.5` shipped Tor's files unreadable by normal users, so Connect failed; use `v1.0.6` or newer.)
 
-Then launch **VPN Desk** from your application menu (or run `/opt/vpn_desk/vpn_desk`).
+Then launch **OnionDesk** from your application menu (or run `/opt/oniondesk/oniondesk`).
 
 > **Requirements:** a desktop Linux with GTK 3. `nftables` and `polkit` are only needed for the optional [system-wide mode](#-system-wide-mode-linux); the packages declare them.
 
@@ -107,7 +127,7 @@ Tor throughput is dominated by round-trip distance to the exit region and capped
 
 ## 🛡️ System-wide mode (Linux)
 
-By default VPN Desk is a **local SOCKS5 proxy**: only apps that honour the system proxy go through Tor. Many tools (CLI programs, games, torrent clients) ignore it. **System-wide mode** closes that gap.
+By default OnionDesk is a **local SOCKS5 proxy**: only apps that honour the system proxy go through Tor. Many tools (CLI programs, games, torrent clients) ignore it. **System-wide mode** closes that gap.
 
 Turn it on with the **System-wide** switch in the main card. The app explains the change, and when you press **Connect** your system shows one standard administrator-password prompt.
 
@@ -115,7 +135,7 @@ Turn it on with the **System-wide** switch in the main card. The app explains th
 |---|---|
 | Sends **all TCP** to Tor | `nftables` NAT rule redirects outgoing TCP to Tor's `TransPort` (9040) |
 | Sends **all DNS** to Tor | UDP port 53 redirected to Tor's `DNSPort` (5353): no DNS leaks |
-| Keeps Tor itself reachable | Tor runs as a dedicated `vpndesk` system user that is excluded from the redirect |
+| Keeps Tor itself reachable | Tor runs as a dedicated `oniondesk` system user that is excluded from the redirect |
 | Blocks what Tor can't carry | Other UDP (QUIC/HTTP3, games, VoIP) and **IPv6** are dropped, so nothing leaks around Tor |
 | Leaves your LAN alone | `192.168.x.x`, `10.x.x.x`, `172.16/12`, link-local and DHCP stay direct |
 | **Fail-closed** | If Tor crashes, traffic stays **blocked** and a red **Restore** banner appears; nothing leaks. Closing the app or pressing Disconnect restores normal networking automatically |
@@ -123,7 +143,7 @@ Turn it on with the **System-wide** switch in the main card. The app explains th
 It works the same on GNOME, KDE and any other Linux desktop because it uses the firewall, not a desktop-specific proxy setting.
 
 **Security design**
-- The privileged part is a tiny shell helper, `vpndesk-net`, launched through **polkit (`pkexec`)**. It is installed root-owned at `/opt/vpn_desk/vpndesk-net`.
+- The privileged part is a tiny shell helper, `oniondesk-net`, launched through **polkit (`pkexec`)**. It is installed root-owned at `/opt/oniondesk/oniondesk-net`.
 - It takes **no file paths from the caller**: it finds Tor next to itself and accepts only an **allowlist of `torrc` directives** from the unprivileged app.
 - Tor itself never runs as root; the app talks to it over a password-protected control port bound to `127.0.0.1`.
 
@@ -133,21 +153,21 @@ It works the same on GNOME, KDE and any other Linux desktop because it uses the 
 
 ## 🗑️ Uninstall
 
-Open **About** and press **Uninstall…** (Linux). VPN Desk asks you to confirm, disconnects and restores your network, then removes itself: the app and menu entry, the system-wide helper with its firewall table and the `vpndesk` system user, and (if you leave the box ticked) your settings in `~/.config/vpn_desk`. You are asked for administrator permission once; if you decline, nothing is removed. Tor Browser and other Tor installs are never touched.
+Open **About** and press **Uninstall…** (Linux). OnionDesk asks you to confirm, disconnects and restores your network, then removes itself: the app and menu entry, the system-wide helper with its firewall table and the `oniondesk` system user, and (if you leave the box ticked) your settings in `~/.config/oniondesk`. You are asked for administrator permission once; if you decline, nothing is removed. Tor Browser and other Tor installs are never touched.
 
 - Installed from a `.deb`/`.rpm`: fully removed. Developer install (`install.sh`): removed without an admin prompt. Running from a build folder: only your settings are removed, the folder is left alone.
-- Preview the whole flow without removing anything: `VPNDESK_UNINSTALL_DRYRUN=1 vpn_desk`.
-- Without the app: `sudo apt remove vpn-desk` / `sudo dnf remove vpn-desk`.
+- Preview the whole flow without removing anything: `ONIONDESK_UNINSTALL_DRYRUN=1 oniondesk`.
+- Without the app: `sudo apt remove oniondesk` / `sudo dnf remove oniondesk`.
 
 ## 🩹 Troubleshooting: no internet after a crash
 
-VPN Desk records what it changes in `~/.local/state/vpndesk/session.json` *before* changing it, and undoes it exactly
+OnionDesk records what it changes in `~/.local/state/oniondesk/session.json` *before* changing it, and undoes it exactly
 (your previous proxy settings are put back, not just "none") in every case:
 
 | What happened | What puts things back |
 |---|---|
 | Disconnect, close button, `SIGTERM` / `SIGINT` / `SIGHUP`, window closed | The app itself, then deletes the journal |
-| App force-quit / `kill -9` / crash | A small detached guard (`vpndesk-restore --watch`) notices within about a second and restores everything; Tor also exits on its own because the app owns it |
+| App force-quit / `kill -9` / crash | A small detached guard (`oniondesk-restore --watch`) notices within about a second and restores everything; Tor also exits on its own because the app owns it |
 | Whole session killed, power cut, guard also gone | Next launch runs the same recovery first and shows "Recovered from an unclean exit" |
 
 A tor process is only stopped if its pid, executable and start time match what the app recorded. Your own Tor Browser
@@ -156,8 +176,8 @@ or `tor` service is never touched.
 **No internet and the app won't open?** Run this in a terminal (it needs no window and no display):
 
 ```bash
-vpndesk-restore            # installed by the .deb/.rpm; from a source build: packaging/linux/vpndesk-restore
-vpndesk-restore --net      # also force-remove the system-wide firewall table (asks for administrator permission)
+oniondesk-restore            # installed by the .deb/.rpm; from a source build: packaging/linux/oniondesk-restore
+oniondesk-restore --net      # also force-remove the system-wide firewall table (asks for administrator permission)
 ```
 
 Manual fallbacks, if the script itself is unavailable:
@@ -165,10 +185,10 @@ Manual fallbacks, if the script itself is unavailable:
 ```bash
 # proxy (GNOME)
 gsettings set org.gnome.system.proxy mode 'none'
-# stuck system-wide firewall table (the table is called "vpndesk", family "inet")
+# stuck system-wide firewall table (the table is called "oniondesk", family "inet")
 sudo nft list tables
-sudo nft delete table inet vpndesk
-# orphaned tor owned by you (look, then kill only the PID you recognise as VPN Desk's)
+sudo nft delete table inet oniondesk
+# orphaned tor owned by you (look, then kill only the PID you recognise as OnionDesk's)
 pgrep -a tor
 ```
 
@@ -199,7 +219,7 @@ lib/
   about_page.dart    Animated About page
 assets/              world.json (country shapes), profile.jpg
 packaging/
-  linux/             vpndesk-net helper + polkit policy
+  linux/             oniondesk-net helper + polkit policy
   flatpak/ snap/     Manifests (experimental)
 fetch_tor.sh         Download + verify the official Tor Expert Bundle
 build_tor_linux.sh   Build Tor from source (Linux arm64)
@@ -218,18 +238,18 @@ You need the [Flutter SDK](https://docs.flutter.dev/get-started/install/linux) (
 
 ```bash
 git clone https://github.com/sandipbera35/vpndesk.git
-cd vpndesk
+cd oniondesk
 
 flutter pub get
 flutter build linux --release
 
 ./bundle_tor.sh                # bundle Tor + the system-wide helper
-build/linux/x64/release/bundle/vpn_desk   # run it
+build/linux/x64/release/bundle/oniondesk   # run it
 
 ./package.sh                   # optional: build .deb and .rpm into dist/
 ```
 
-`./install.sh` installs the local build as a **VPN Desk (dev)** menu entry for development; it refuses to run if you installed the package (a second copy would shadow it). `./install.sh --uninstall` removes it.
+`./install.sh` installs the local build as a **OnionDesk (dev)** menu entry for development; it refuses to run if you installed the package (a second copy would shadow it). `./install.sh --uninstall` removes it.
 
 On **arm64**, `bundle_tor.sh` compiles Tor from source, which needs `libevent-dev`, `libssl-dev` and `zlib1g-dev`.
 
@@ -259,13 +279,13 @@ Tor currently has no usable exit relays there. Pick another location.
 **Does it collect data?**
 No accounts, no analytics, no telemetry.
 
-**Honest status:** Linux x86_64 has been built and exercised end to end, including system-wide mode (verified live on Fedora: traffic goes through Tor, DNS and the LAN behave, QUIC/IPv6 are blocked, and after a hard kill of the helper and Tor the stuck firewall table is removed by `vpndesk-restore --net`). Linux arm64 builds in CI but hasn't been run on hardware; macOS and Windows are scaffolded but untested. Keep `vpndesk-restore` in mind if anything ever misbehaves.
+**Honest status:** Linux x86_64 has been built and exercised end to end, including system-wide mode (verified live on Fedora: traffic goes through Tor, DNS and the LAN behave, QUIC/IPv6 are blocked, and after a hard kill of the helper and Tor the stuck firewall table is removed by `oniondesk-restore --net`). Linux arm64 builds in CI but hasn't been run on hardware; macOS and Windows are scaffolded but untested. Keep `oniondesk-restore` in mind if anything ever misbehaves.
 
 ---
 
 ## 🤖 Built with AI assistance
 
-VPN Desk was designed and directed by **Sandip Bera** and developed with the help of AI coding assistants: **[Claude Code](https://claude.com/claude-code)** (by Anthropic) and **[OpenCode](https://opencode.ai)**. All code was reviewed and tested by the author.
+OnionDesk was designed and directed by **Sandip Bera** and developed with the help of AI coding assistants: **[Claude Code](https://claude.com/claude-code)** (by Anthropic) and **[OpenCode](https://opencode.ai)**. All code was reviewed and tested by the author.
 
 ---
 

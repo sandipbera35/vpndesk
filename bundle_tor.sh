@@ -5,9 +5,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 for d in build/linux/x64/release/bundle build/linux/arm64/release/bundle; do
   if [ -d "$d" ]; then
-    install -m 755 packaging/linux/vpndesk-net "$d/vpndesk-net"
-    install -m 755 packaging/linux/vpndesk-restore "$d/vpndesk-restore"
-    install -m 755 packaging/linux/vpndesk-uninstall "$d/vpndesk-uninstall"
+    install -m 755 packaging/linux/oniondesk-net "$d/oniondesk-net"
+    install -m 755 packaging/linux/oniondesk-restore "$d/oniondesk-restore"
+    install -m 755 packaging/linux/oniondesk-uninstall "$d/oniondesk-uninstall"
   fi
 done
 case "$(uname -m)" in

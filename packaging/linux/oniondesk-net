@@ -1,21 +1,21 @@
 #!/bin/bash
-# vpndesk-net: privileged helper for VPN Desk's optional system-wide mode (Linux).
+# oniondesk-net: privileged helper for OnionDesk's optional system-wide mode (Linux).
 #
-#   vpndesk-net start   reads a torrc from stdin, installs the nftables rules, runs tor as the
-#                       unprivileged 'vpndesk' user and stays in the foreground (tor's log goes to stdout)
-#   vpndesk-net stop    removes the rules and any tor owned by 'vpndesk' (restores normal networking)
-#   vpndesk-net status  prints none | active | blocked
+#   oniondesk-net start   reads a torrc from stdin, installs the nftables rules, runs tor as the
+#                       unprivileged 'oniondesk' user and stays in the foreground (tor's log goes to stdout)
+#   oniondesk-net stop    removes the rules and any tor owned by 'oniondesk' (restores normal networking)
+#   oniondesk-net status  prints none | active | blocked
 #
 # Must run as root (the app launches it through pkexec). It takes no paths from the caller: tor is
 # found next to this script and only an allowlist of torrc directives from stdin is honoured.
 set -u
-[ "$(id -u)" = 0 ] || { echo "vpndesk-net must run as root" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "oniondesk-net must run as root" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-U=vpndesk
-STATE=/run/vpn_desk
-DATA=/var/lib/vpn_desk
-TABLE="inet vpndesk"
+U=oniondesk
+STATE=/run/oniondesk
+DATA=/var/lib/oniondesk
+TABLE="inet oniondesk"
 LAN4='127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16'
 LAN6='::1, fe80::/10, fc00::/7'
 
@@ -120,7 +120,7 @@ TORRC
     else
       rules_block                   # tor crashed: stay fail-closed until the user restores
       echo blocked > "$STATE/state"
-      echo "VPNDESK_BLOCKED tor exited with status $RC; traffic is blocked until restored"
+      echo "ONIONDESK_BLOCKED tor exited with status $RC; traffic is blocked until restored"
     fi
     exit "$RC"
     ;;
@@ -132,6 +132,6 @@ TORRC
     cat "$STATE/state" 2>/dev/null || echo none
     ;;
   *)
-    echo "usage: vpndesk-net start|stop|status" >&2; exit 64
+    echo "usage: oniondesk-net start|stop|status" >&2; exit 64
     ;;
 esac

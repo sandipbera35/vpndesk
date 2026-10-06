@@ -1,24 +1,29 @@
 #!/bin/bash
-# vpndesk-restore: put the machine back to normal after VPN Desk exited uncleanly. Needs no display.
+# oniondesk-restore: put the machine back to normal after OnionDesk exited uncleanly. Needs no display.
 #
-#   vpndesk-restore            recover now (what you run from a terminal when the internet is gone)
-#   vpndesk-restore --auto     same, quiet; used by the app on start (exit 10 = something was recovered)
-#   vpndesk-restore --watch    detached guard started by the app: waits for it to die, then recovers
-#   vpndesk-restore --net      also force-remove the system-wide firewall table (asks for admin rights)
+#   oniondesk-restore            recover now (what you run from a terminal when the internet is gone)
+#   oniondesk-restore --auto     same, quiet; used by the app on start (exit 10 = something was recovered)
+#   oniondesk-restore --watch    detached guard started by the app: waits for it to die, then recovers
+#   oniondesk-restore --net      also force-remove the system-wide firewall table (asks for admin rights)
 #
-# It only ever touches what the session journal says VPN Desk changed (plus a proxy that points at a
+# It only ever touches what the session journal says OnionDesk changed (plus a proxy that points at a
 # dead 127.0.0.1:9050). It never runs `killall tor`: a tor is stopped only if its pid, executable and
 # start time all match what the app recorded, so your own Tor Browser / tor service is left alone.
 #
 # Exit: 0 nothing to do, 10 recovered, 1 something could not be restored (journal kept, try again).
 set -u
 
-STATE_DIR="${VPNDESK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/vpndesk}"
+STATE_DIR="${ONIONDESK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/oniondesk}"
 JOURNAL="$STATE_DIR/session.json"
-PROC="${VPNDESK_PROC:-/proc}"
+# Upgraded from the VPN Desk name while a session was open: adopt its journal so it is still undone.
+LEGACY="${XDG_STATE_HOME:-$HOME/.local/state}/vpndesk/session.json"
+if [ -z "${ONIONDESK_STATE_DIR:-}" ] && [ ! -f "$JOURNAL" ] && [ -f "$LEGACY" ]; then
+  mkdir -p "$STATE_DIR" && mv "$LEGACY" "$JOURNAL" 2>/dev/null || true
+fi
+PROC="${ONIONDESK_PROC:-/proc}"
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-HELPER="${VPNDESK_HELPER:-$HERE/vpndesk-net}"
-NETSTATE="${VPNDESK_NETSTATE:-/run/vpn_desk/state}"
+HELPER="${ONIONDESK_HELPER:-$HERE/oniondesk-net}"
+NETSTATE="${ONIONDESK_NETSTATE:-/run/oniondesk/state}"
 PROXY_SCHEMA=org.gnome.system.proxy
 
 QUIET=0 WATCH=0 FORCE_NET=0 AUTO=0
@@ -29,12 +34,12 @@ for a in "$@"; do
     --net) FORCE_NET=1 ;;
     --quiet) QUIET=1 ;;
     -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "vpndesk-restore: unknown option $a" >&2; exit 64 ;;
+    *) echo "oniondesk-restore: unknown option $a" >&2; exit 64 ;;
   esac
 done
 
-say() { [ "$QUIET" = 1 ] || echo "vpndesk-restore: $*"; }
-warn() { echo "vpndesk-restore: $*" >&2; }
+say() { [ "$QUIET" = 1 ] || echo "oniondesk-restore: $*"; }
+warn() { echo "oniondesk-restore: $*" >&2; }
 
 # ---- journal (flat JSON, one "key": value per line, written by the app) ----
 jget() {
@@ -83,7 +88,7 @@ restore_proxy() {
      && [ "$(gsettings get $PROXY_SCHEMA.socks host 2>/dev/null)" = "'127.0.0.1'" ] \
      && [ "$(gsettings get $PROXY_SCHEMA.socks port 2>/dev/null)" = "9050" ] \
      && ! (exec 3<>/dev/tcp/127.0.0.1/9050) 2>/dev/null \
-     && ! pgrep -x vpn_desk >/dev/null 2>&1; then
+     && ! pgrep -x oniondesk >/dev/null 2>&1; then
     gsettings set $PROXY_SCHEMA mode none || return 1
     say "proxy pointed at a dead 127.0.0.1:9050; set to none"
     RECOVERED=1
@@ -95,7 +100,7 @@ stop_tor() {
   local pid start exe
   pid="$(jget tor_pid)"; start="$(jget tor_start)"; exe="$(jget tor_exe)"
   same_process "$pid" "$start" || return 0
-  [ -n "$exe" ] && [ "$(readlink "$PROC/$pid/exe" 2>/dev/null)" = "$exe" ] || { say "pid $pid is no longer VPN Desk's tor; leaving it alone"; return 0; }
+  [ -n "$exe" ] && [ "$(readlink "$PROC/$pid/exe" 2>/dev/null)" = "$exe" ] || { say "pid $pid is no longer OnionDesk's tor; leaving it alone"; return 0; }
   kill -TERM "$pid" 2>/dev/null
   local i
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
@@ -138,7 +143,7 @@ recover() {
   if [ "$ok" != 0 ]; then
     warn "could not restore everything. Manual fallbacks:"
     warn "  gsettings set $PROXY_SCHEMA mode 'none'"
-    warn "  sudo nft list tables ; sudo nft delete table inet vpndesk"
+    warn "  sudo nft list tables ; sudo nft delete table inet oniondesk"
     return 1
   fi
   rm -f "$JOURNAL"
@@ -159,13 +164,13 @@ if [ "$WATCH" = 1 ]; then
   sleep 1                             # let tor's own owner-exit and the helper clean up first
   recover; rc=$?
   [ "$rc" = 0 ] && [ "$RECOVERED" = 1 ] && command -v notify-send >/dev/null 2>&1 \
-    && notify-send "VPN Desk" "VPN Desk quit unexpectedly. Normal networking was restored." 2>/dev/null
+    && notify-send "OnionDesk" "OnionDesk quit unexpectedly. Normal networking was restored." 2>/dev/null
   exit "$rc"
 fi
 
 if [ -f "$JOURNAL" ]; then
   if same_process "$(jget app_pid)" "$(jget app_start)"; then
-    [ "$FORCE_NET" = 1 ] || { say "VPN Desk is still running (pid $(jget app_pid)); nothing to recover"; exit 0; }
+    [ "$FORCE_NET" = 1 ] || { say "OnionDesk is still running (pid $(jget app_pid)); nothing to recover"; exit 0; }
   fi
 fi
 recover || exit 1

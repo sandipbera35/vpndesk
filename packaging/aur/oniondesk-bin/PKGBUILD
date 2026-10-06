@@ -1,0 +1,38 @@
+# Maintainer: Sandip Bera <sandipbera35@gmail.com>
+pkgname=oniondesk-bin
+_pkgname=oniondesk
+pkgver=1.0.7
+pkgrel=1
+pkgdesc='Free Tor VPN alternative: pick your exit country, live map, optional system-wide mode'
+arch=('x86_64' 'aarch64')
+url='https://github.com/sandipbera35/vpndesk'
+license=('Apache-2.0')
+depends=('gtk3' 'nftables' 'polkit')
+optdepends=('polkit: administrator prompt for system-wide mode')
+provides=("$_pkgname")
+conflicts=("$_pkgname" 'vpn-desk')
+options=('!strip' '!debug')
+source_x86_64=("$_pkgname-$pkgver-x64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-linux-x64.tar.gz")
+source_aarch64=("$_pkgname-$pkgver-arm64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-linux-arm64.tar.gz")
+source=("$_pkgname.desktop::$url/raw/v$pkgver/packaging/oniondesk.desktop"
+        "$_pkgname.png::$url/raw/v$pkgver/packaging/icon.png"
+        "$_pkgname.metainfo.xml::$url/raw/v$pkgver/packaging/linux/io.github.sandipbera35.OnionDesk.metainfo.xml"
+        "$_pkgname.policy::$url/raw/v$pkgver/packaging/linux/io.github.sandipbera35.OnionDesk.net.policy")
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')   # `updpkgsums` fills these in at release time
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  install -dm755 "$pkgdir/opt/$_pkgname"
+  cp -a --no-preserve=ownership "$srcdir/oniondesk/." "$pkgdir/opt/$_pkgname/"
+  chmod -R u+rwX,go+rX,go-w "$pkgdir/opt/$_pkgname"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/opt/$_pkgname/oniondesk" "$pkgdir/usr/bin/oniondesk"
+  ln -s "/opt/$_pkgname/oniondesk-restore" "$pkgdir/usr/bin/oniondesk-restore"
+  install -Dm644 "$srcdir/$_pkgname.desktop" "$pkgdir/usr/share/applications/io.github.sandipbera35.OnionDesk.desktop"
+  sed -i "s|^Exec=.*|Exec=/opt/$_pkgname/oniondesk|" "$pkgdir/usr/share/applications/io.github.sandipbera35.OnionDesk.desktop"
+  install -Dm644 "$srcdir/$_pkgname.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/oniondesk.png"
+  sed -e "s/@VERSION@/$pkgver/" -e "s/@DATE@/$(date +%F)/" "$srcdir/$_pkgname.metainfo.xml" > "$srcdir/m.xml"
+  install -Dm644 "$srcdir/m.xml" "$pkgdir/usr/share/metainfo/io.github.sandipbera35.OnionDesk.metainfo.xml"
+  install -Dm644 "$srcdir/$_pkgname.policy" "$pkgdir/usr/share/polkit-1/actions/io.github.sandipbera35.OnionDesk.net.policy"
+}

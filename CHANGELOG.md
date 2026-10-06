@@ -3,6 +3,16 @@
 ## Highlights
 - **Uninstall from the app** (Linux): About > Uninstall. Asks to confirm, then removes the app, its system helper and (optionally) your settings, with an animated progress page. Administrator permission is asked once; cancelling removes nothing. Set `VPNDESK_UNINSTALL_DRYRUN=1` to preview the flow without removing anything.
 
+## 1.1.0 (2026-10-06)
+
+### Renamed to OnionDesk
+- VPN Desk is now **OnionDesk**: package/binary `oniondesk`, helpers `oniondesk-net`/`-restore`/`-uninstall`, app id `io.github.sandipbera35.OnionDesk`, env vars `ONIONDESK_*`. Settings and any open crash journal are carried over from the old name; the new `.deb`/`.rpm` replace `vpn-desk`.
+- Store metadata for search: Network + Security categories, Tor/VPN/Onion/Proxy/Privacy keywords.
+- New: signed apt/dnf repository build (needs signing key secrets), AUR `oniondesk-bin` recipe, portable `.tar.gz` per architecture.
+
+### Smoothness
+- Relay-list JSON (~1 MB) is decoded off the UI thread; it stalled a frame (up to ~90 ms) every minute.
+
 ## 1.0.7 (2026-10-05)
 
 ### Reliability (force-quit can no longer leave the machine without internet)

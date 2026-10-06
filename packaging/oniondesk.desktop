@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OnionDesk
+GenericName=Tor VPN alternative
+Comment=Browse through Tor from a country you choose
+Exec=oniondesk
+Icon=oniondesk
+Terminal=false
+Categories=Network;Security;
+Keywords=Tor;VPN;Onion;Proxy;SOCKS5;Privacy;Anonymity;Security;Censorship;
+StartupWMClass=oniondesk

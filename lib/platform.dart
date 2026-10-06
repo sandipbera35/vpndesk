@@ -25,8 +25,13 @@ class Plat {
     } else {
       base = env['XDG_CONFIG_HOME'] ?? '${env['HOME'] ?? '/tmp'}/.config';
     }
-    final d = Directory('$base/vpn_desk');
-    if (!frozen) d.createSync(recursive: true);
+    final d = Directory('$base/oniondesk');
+    if (!frozen) {
+      // Renamed from VPN Desk: carry the old settings/measurements over once.
+      final old = Directory('$base/vpndesk');
+      if (!d.existsSync() && old.existsSync()) { try { old.renameSync(d.path); } catch (_) {} }
+      d.createSync(recursive: true);
+    }
     return d;
   }
 
@@ -218,23 +223,23 @@ class Plat {
   }
 
   static String? get helperPath {
-    final f = File('${File(Platform.resolvedExecutable).parent.path}/vpndesk-net');
+    final f = File('${File(Platform.resolvedExecutable).parent.path}/oniondesk-net');
     return f.existsSync() ? f.path : null;
   }
 
   /// Why system-wide mode can't be used here, or null if it can.
   static String? systemWideProblem() {
     if (!linux) return 'System-wide mode is only available on Linux for now.';
-    if (helperPath == null) return 'The VPN Desk network helper is missing from this install.';
+    if (helperPath == null) return 'The OnionDesk network helper is missing from this install.';
     if (!_has('pkexec')) return 'Needs polkit (pkexec) to ask for administrator permission. Install the "polkit" package.';
     if (!_has('nft')) return 'Needs nftables. Install the "nftables" package.';
     return null;
   }
 
-  /// `vpndesk-restore` next to the executable (or in the source tree when run from a dev build).
+  /// `oniondesk-restore` next to the executable (or in the source tree when run from a dev build).
   static String? get restoreScript {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
-    for (final c in ['$exeDir/vpndesk-restore', '$exeDir/../../../../../packaging/linux/vpndesk-restore']) {
+    for (final c in ['$exeDir/oniondesk-restore', '$exeDir/../../../../../packaging/linux/oniondesk-restore']) {
       if (File(c).existsSync()) return c;
     }
     return null;
@@ -293,7 +298,7 @@ class Plat {
 
   /// none | active | blocked, as recorded by the helper.
   static String netState() {
-    try { return File('/run/vpn_desk/state').readAsStringSync().trim(); } catch (_) { return 'none'; }
+    try { return File('/run/oniondesk/state').readAsStringSync().trim(); } catch (_) { return 'none'; }
   }
 
   /// Start the helper (admin prompt via pkexec) and feed it the torrc on stdin.

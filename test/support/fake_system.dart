@@ -3,13 +3,13 @@ import 'dart:io';
 /// A sandbox with a fake `gsettings`, `pkexec` and `notify-send` first on PATH and a private state dir,
 /// so tests of the recovery logic never touch the real desktop settings, processes or firewall.
 class FakeSystem {
-  final Directory root = Directory.systemTemp.createTempSync('vpndesk_test_');
+  final Directory root = Directory.systemTemp.createTempSync('oniondesk_test_');
   late final Directory bin = Directory('${root.path}/bin')..createSync();
   late final Directory gs = Directory('${root.path}/gs')..createSync();
   late final Directory state = Directory('${root.path}/state')..createSync();
   late final File netState = File('${root.path}/netstate');
   late final File pkexecLog = File('${root.path}/pkexec.log');
-  late final File helper = File('${root.path}/vpndesk-net');
+  late final File helper = File('${root.path}/oniondesk-net');
   bool pkexecFails = false;
 
   FakeSystem() {
@@ -27,7 +27,7 @@ exit 1
     _script('pkexec', r'''
 echo "$@" >> "$FAKE_PKEXEC_LOG"
 [ -f "$FAKE_PKEXEC_FAIL" ] && exit 126
-echo none > "$VPNDESK_NETSTATE"
+echo none > "$ONIONDESK_NETSTATE"
 exit 0
 ''');
     _script('notify-send', 'exit 0');
@@ -65,9 +65,9 @@ exit 0
         'FAKE_GS': gs.path,
         'FAKE_PKEXEC_LOG': pkexecLog.path,
         'FAKE_PKEXEC_FAIL': '${root.path}/pkexec.fail',
-        'VPNDESK_STATE_DIR': state.path,
-        'VPNDESK_NETSTATE': netState.path,
-        'VPNDESK_HELPER': helper.path,
+        'ONIONDESK_STATE_DIR': state.path,
+        'ONIONDESK_NETSTATE': netState.path,
+        'ONIONDESK_HELPER': helper.path,
       };
 
   File get journal => File('${state.path}/session.json');

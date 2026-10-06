@@ -1,29 +1,29 @@
 #!/bin/bash
-# vpndesk-uninstall: the administrator part of "Uninstall VPN Desk" (Linux).
+# oniondesk-uninstall: the administrator part of "Uninstall OnionDesk" (Linux).
 #
-# Run by the app through pkexec (policy action io.vpndesk.uninstall, installed root-owned in /opt/vpn_desk).
+# Run by the app through pkexec (policy action io.github.sandipbera35.OnionDesk.uninstall, installed root-owned in /opt/oniondesk).
 # It takes no arguments and no paths from the caller: everything it touches is hard-coded below.
 # It prints progress lines for the app's uninstall page:
 #   STEP:<id>:<text>   a step has started       (firewall | package | system)
 #   DONE               everything was removed
 #   ERROR:<text>       something failed (nothing further is attempted)
 #
-# What it removes: VPN Desk's firewall table and tor, the installed package (dpkg or rpm; otherwise exactly the
-# files listed below), /var/lib/vpn_desk, /run/vpn_desk and the 'vpndesk' system user. It never touches any other
+# What it removes: OnionDesk's firewall table and tor, the installed package (dpkg or rpm; otherwise exactly the
+# files listed below), /var/lib/oniondesk, /run/oniondesk and the 'oniondesk' system user. It never touches any other
 # tor, firewall table or user.
 set -u
 
-PKG=vpn-desk
-APPDIR=/opt/vpn_desk
-DATA=/var/lib/vpn_desk
-RUN=/run/vpn_desk
-U=vpndesk
-TABLE="inet vpndesk"
-# Files a package would own, used only when VPN Desk was not installed by dpkg/rpm.
-LOOSE_FILES="/usr/bin/vpndesk-restore
-/usr/share/applications/io.vpndesk.VPNDesk.desktop
-/usr/share/metainfo/io.vpndesk.VPNDesk.metainfo.xml
-/usr/share/polkit-1/actions/io.vpndesk.net.policy"
+PKG=oniondesk
+APPDIR=/opt/oniondesk
+DATA=/var/lib/oniondesk
+RUN=/run/oniondesk
+U=oniondesk
+TABLE="inet oniondesk"
+# Files a package would own, used only when OnionDesk was not installed by dpkg/rpm.
+LOOSE_FILES="/usr/bin/oniondesk-restore
+/usr/share/applications/io.github.sandipbera35.OnionDesk.desktop
+/usr/share/metainfo/io.github.sandipbera35.OnionDesk.metainfo.xml
+/usr/share/polkit-1/actions/io.github.sandipbera35.OnionDesk.net.policy"
 
 step() { echo "STEP:$1:$2"; }
 fail() { printf 'ERROR:%s\n' "$(printf '%s' "$1" | tr '\n' ' ' | cut -c1-300)"; exit 1; }
@@ -46,7 +46,7 @@ else
   # Not installed by a package manager: remove exactly the known locations.
   rm -rf "$APPDIR"
   printf '%s\n' "$LOOSE_FILES" | while IFS= read -r f; do [ -n "$f" ] && rm -f "$f"; done
-  for sz in 512x512 256x256 128x128 64x64; do rm -f "/usr/share/icons/hicolor/$sz/apps/vpn_desk.png"; done
+  for sz in 512x512 256x256 128x128 64x64; do rm -f "/usr/share/icons/hicolor/$sz/apps/oniondesk.png"; done
 fi
 rmdir "$APPDIR" 2>/dev/null
 

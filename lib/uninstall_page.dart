@@ -72,13 +72,13 @@ class _ConfirmDialogState extends State<_ConfirmDialog> {
                   ),
                   const SizedBox(width: 14),
                   const Expanded(
-                    child: Text('Uninstall VPN Desk?', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+                    child: Text('Uninstall OnionDesk?', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
               Text(
-                widget.dryRun ? 'Preview mode: nothing will actually be removed.' : 'This will completely remove VPN Desk from this computer:',
+                widget.dryRun ? 'Preview mode: nothing will actually be removed.' : 'This will completely remove OnionDesk from this computer:',
                 style: TextStyle(color: widget.dryRun ? _amber : Colors.white70, height: 1.4),
               ),
               const SizedBox(height: 10),
@@ -310,8 +310,8 @@ class _UninstallPageState extends State<UninstallPage> with TickerProviderStateM
   }
 
   String get _title => switch (_phase) {
-    _Phase.running => 'Uninstalling VPN Desk',
-    _Phase.done => widget.dryRun ? 'Preview finished' : 'VPN Desk has been uninstalled',
+    _Phase.running => 'Uninstalling OnionDesk',
+    _Phase.done => widget.dryRun ? 'Preview finished' : 'OnionDesk has been uninstalled',
     _Phase.failed => _cancelled ? 'Uninstall cancelled' : 'Uninstall stopped',
   };
 
@@ -519,7 +519,7 @@ class _UninstallPageState extends State<UninstallPage> with TickerProviderStateM
                 ? FilledButton(
                     onPressed: widget.onBack,
                     style: FilledButton.styleFrom(backgroundColor: _teal, foregroundColor: const Color(0xFF07101F)),
-                    child: const Text('Back to VPN Desk'),
+                    child: const Text('Back to OnionDesk'),
                   )
                 : Text('Closing in ${_left.clamp(0, 99)}…', style: const TextStyle(color: Colors.white54, fontSize: 13)),
           ),
@@ -528,7 +528,7 @@ class _UninstallPageState extends State<UninstallPage> with TickerProviderStateM
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            OutlinedButton(onPressed: widget.onBack, child: Text(_cancelled ? 'Back to VPN Desk' : 'Close')),
+            OutlinedButton(onPressed: widget.onBack, child: Text(_cancelled ? 'Back to OnionDesk' : 'Close')),
             const SizedBox(width: 12),
             FilledButton(
               onPressed: () => setState(_begin),

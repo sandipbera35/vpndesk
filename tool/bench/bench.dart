@@ -1,4 +1,4 @@
-// VPN Desk benchmark harness (Linux). Starts its OWN tor on private ports with a private DataDirectory,
+// OnionDesk benchmark harness (Linux). Starts its OWN tor on private ports with a private DataDirectory,
 // so it never touches the app, the system proxy or the firewall.
 //
 //   dart tool/bench/bench.dart run --variant baseline --country de
@@ -231,7 +231,7 @@ Future<Ctx> makeCtx(String name, {String? dataDir}) async {
   final td = bundleDir();
   final exits = await topRelays('flag=Exit&country=$country', 8);
   final guards = await topRelays('flag=Guard', 12);
-  final cache = '${Platform.environment['HOME']}/.cache/vpndesk-bench';
+  final cache = '${Platform.environment['HOME']}/.cache/oniondesk-bench';
   return Ctx(
       dataDir: dataDir ?? '$cache/data-$name', geoip: '$td/geoip', geoip6: '$td/geoip6', socksPort: 19050, controlPort: 19051,
       exits: exits, guards: guards, country: country, ownerPid: pid);

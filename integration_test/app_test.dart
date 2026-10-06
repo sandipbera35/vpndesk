@@ -3,7 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:vpn_desk/main.dart';
+import 'package:oniondesk/main.dart';
 
 Future<bool> waitFor(WidgetTester t, bool Function() ok, {int secs = 90}) async {
   for (var i = 0; i < secs * 2; i++) {
@@ -23,7 +23,7 @@ void main() {
     t.view.physicalSize = const Size(1280, 860);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
-    await t.pumpWidget(const VpnDeskApp());
+    await t.pumpWidget(const OnionDeskApp());
     await t.pump(const Duration(seconds: 3));
     expect(has('Not protected'), true, reason: 'initial state');
     debugPrint('T initial rss=${rssMb()}MB');

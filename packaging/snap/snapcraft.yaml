@@ -1,4 +1,4 @@
-name: vpn-desk
+name: oniondesk
 base: core22
 version: '0.1.0'
 summary: Desktop GUI for Tor country simulation
@@ -7,17 +7,17 @@ grade: stable
 confinement: strict
 
 app:
-  command: vpn_desk
+  command: oniondesk
   plugs: [network, network-bind, home]
 
 parts:
-  vpn-desk:
+  oniondesk:
     plugin: nil
     source: build/linux/x64/release/bundle
     stage-packages: [libgtk-3-0]
     override-build: |
-      mkdir -p $CRAFT_PART_INSTALL/opt/vpn_desk
-      cp -r . $CRAFT_PART_INSTALL/opt/vpn_desk/
+      mkdir -p $CRAFT_PART_INSTALL/opt/oniondesk
+      cp -r . $CRAFT_PART_INSTALL/opt/oniondesk/
       mkdir -p $CRAFT_PART_INSTALL/bin $CRAFT_PART_INSTALL/meta/gui
-      ln -s /opt/vpn_desk/vpn_desk $CRAFT_PART_INSTALL/bin/vpn_desk
-      cp $CRAFT_PROJECT_DIR/packaging/vpn_desk.desktop $CRAFT_PART_INSTALL/meta/gui/vpn_desk.desktop
+      ln -s /opt/oniondesk/oniondesk $CRAFT_PART_INSTALL/bin/oniondesk
+      cp $CRAFT_PROJECT_DIR/packaging/oniondesk.desktop $CRAFT_PART_INSTALL/meta/gui/oniondesk.desktop

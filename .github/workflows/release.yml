@@ -44,3 +44,31 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+  repo:
+    # Signed apt + dnf repositories on GitHub Pages, so users can `sudo apt install oniondesk` / `sudo dnf install oniondesk`.
+    # Needs repo secrets GPG_PRIVATE_KEY (armored) and GPG_KEY_ID, and Pages set to the gh-pages branch.
+    needs: linux
+    continue-on-error: true   # stays red until the signing secrets exist; the release itself is unaffected
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils createrepo-c gnupg
+      - name: Import signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+      - name: Build repositories
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: packaging/repo/build-repos.sh
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
+          force_orphan: true

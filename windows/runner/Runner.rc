@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "io.vpndesk" "\0"
-            VALUE "FileDescription", "vpn_desk" "\0"
+            VALUE "CompanyName", "io.oniondesk" "\0"
+            VALUE "FileDescription", "oniondesk" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "vpn_desk" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 io.vpndesk. All rights reserved." "\0"
-            VALUE "OriginalFilename", "vpn_desk.exe" "\0"
-            VALUE "ProductName", "vpn_desk" "\0"
+            VALUE "InternalName", "oniondesk" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 io.github.sandipbera35. All rights reserved." "\0"
+            VALUE "OriginalFilename", "oniondesk.exe" "\0"
+            VALUE "ProductName", "oniondesk" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

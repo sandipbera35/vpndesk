@@ -1,32 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.vpndesk.VPNDesk</id>
+  <id>io.github.sandipbera35.OnionDesk</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
-  <name>VPN Desk</name>
-  <summary>Browse through Tor from a country you choose</summary>
-  <developer id="in.sandipbera">
+  <name>OnionDesk</name>
+  <summary>Free Tor VPN alternative: pick your exit country</summary>
+  <developer id="io.github.sandipbera35">
     <name>Sandip Bera</name>
   </developer>
   <description>
     <p>
-      VPN Desk starts a bundled Tor client with a strict exit relay in the country you pick, shows your real and
-      exit locations on a live map, and ranks countries by live speed estimates. No account and no subscription.
+      OnionDesk is a free and open-source Tor client with a modern interface. It starts a bundled Tor client with a
+      strict exit relay in the country you pick, shows your real and exit locations on a live world map, and ranks
+      countries by live speed estimates. No account, no subscription, no telemetry.
     </p>
     <ul>
       <li>Choose a country exit, or turn on Auto to always use the fastest location</li>
-      <li>Switch location without ever exposing your real IP</li>
+      <li>Switch location without ever exposing your real IP address</li>
       <li>Live world map with animated pins for your real and exit IP</li>
       <li>Optional system-wide mode that sends all TCP and DNS traffic from every app through Tor (asks for administrator permission once)</li>
+      <li>Crash-safe: your normal network settings are always restored, even if the app is killed</li>
       <li>Tor is bundled, so there is nothing else to install</li>
     </ul>
     <p>
       By default it is a local SOCKS5 proxy, so only apps that honour the system proxy are covered. Tor is slower
-      than a commercial VPN and cannot carry UDP traffic.
+      than a commercial VPN and cannot carry UDP traffic. OnionDesk is not affiliated with the Tor Project.
     </p>
   </description>
-  <launchable type="desktop-id">io.vpndesk.VPNDesk.desktop</launchable>
-  <icon type="stock">vpn_desk</icon>
+  <launchable type="desktop-id">io.github.sandipbera35.OnionDesk.desktop</launchable>
+  <icon type="stock">oniondesk</icon>
   <url type="homepage">https://github.com/sandipbera35/vpndesk</url>
   <url type="bugtracker">https://github.com/sandipbera35/vpndesk/issues</url>
   <categories>
@@ -34,14 +36,25 @@
     <category>Security</category>
   </categories>
   <keywords>
-    <keyword>VPN</keyword>
     <keyword>Tor</keyword>
+    <keyword>VPN</keyword>
+    <keyword>Onion</keyword>
     <keyword>Proxy</keyword>
+    <keyword>SOCKS5</keyword>
     <keyword>Privacy</keyword>
     <keyword>Anonymity</keyword>
+    <keyword>Security</keyword>
+    <keyword>Censorship</keyword>
+    <keyword>Exit node</keyword>
+    <keyword>Country</keyword>
+    <keyword>IP address</keyword>
   </keywords>
+  <branding>
+    <color type="primary" scheme_preference="light">#7de8d8</color>
+    <color type="primary" scheme_preference="dark">#0f766e</color>
+  </branding>
   <provides>
-    <binary>vpn_desk</binary>
+    <binary>oniondesk</binary>
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>

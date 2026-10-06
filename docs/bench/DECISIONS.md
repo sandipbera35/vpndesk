@@ -31,7 +31,7 @@ Privacy: streams to different destinations no longer share one circuit, which lo
 the guard/middle; the exit relay is still the one the app pinned, and the guard set is unchanged. Cost: more circuits.
 
 ## Verified, no change needed
-- 2.1 Persistent DataDirectory: already `~/.config/vpn_desk/data` (system-wide: `/var/lib/vpn_desk/data`), not wiped on
+- 2.1 Persistent DataDirectory: already `~/.config/oniondesk/data` (system-wide: `/var/lib/oniondesk/data`), not wiped on
   start. Cold 34.5 s vs warm 4.0 s bootstrap, so the cache is already doing its job.
 - 2.7 Adaptive circuit timeouts: no `CircuitBuildTimeout` is set.
 - 2.8 Bundled Tor: 15.0.24 (Tor 0.4.9.13) is the newest stable on dist.torproject.org (16.0a13 is an alpha); congestion

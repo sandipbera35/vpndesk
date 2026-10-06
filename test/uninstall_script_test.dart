@@ -5,17 +5,17 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Runs a copy of packaging/linux/vpndesk-uninstall whose hard-coded system paths are rewritten into a temp tree,
+/// Runs a copy of packaging/linux/oniondesk-uninstall whose hard-coded system paths are rewritten into a temp tree,
 /// with fake id/rpm/dpkg/userdel/nft/... on PATH. The real system is never touched.
 class Sandbox {
-  final Directory root = Directory.systemTemp.createTempSync('vpndesk_uninst_');
+  final Directory root = Directory.systemTemp.createTempSync('oniondesk_uninst_');
   late final Directory bin = Directory('${root.path}/fakebin')..createSync();
   late final File log = File('${root.path}/calls.log');
   late final File script;
 
   Sandbox({String installed = 'rpm', bool packageManagerFails = false, bool userExists = true}) {
-    var s = File('packaging/linux/vpndesk-uninstall').readAsStringSync();
-    s = s.replaceAll('/opt/vpn_desk', '${root.path}/opt/vpn_desk').replaceAll('/var/lib/vpn_desk', '${root.path}/var/lib/vpn_desk').replaceAll('/run/vpn_desk', '${root.path}/run/vpn_desk').replaceAll('/usr/', '${root.path}/usr/');
+    var s = File('packaging/linux/oniondesk-uninstall').readAsStringSync();
+    s = s.replaceAll('/opt/oniondesk', '${root.path}/opt/oniondesk').replaceAll('/var/lib/oniondesk', '${root.path}/var/lib/oniondesk').replaceAll('/run/oniondesk', '${root.path}/run/oniondesk').replaceAll('/usr/', '${root.path}/usr/');
     script = File('${root.path}/uninstall.sh')..writeAsStringSync(s);
     fake('id', userExists ? r'if [ "$1" = -u ] && [ $# = 1 ]; then echo 0; exit 0; fi; exit 0' : r'if [ "$1" = -u ] && [ $# = 1 ]; then echo 0; exit 0; fi; exit 1');
     fake('pkill', r'echo "pkill $*" >> "$LOG"');
@@ -28,14 +28,14 @@ class Sandbox {
     final fail = packageManagerFails ? r'echo "database is locked" >&2; exit 1' : r'echo "$0 $*" >> "$LOG"; exit 0';
     fake('dpkg', installed == 'dpkg' ? (r'if [ "$1" = -s ]; then exit 0; fi; ' + fail) : 'exit 1');
     fake('rpm', installed == 'rpm' ? (r'if [ "$1" = -q ]; then exit 0; fi; ' + fail) : 'exit 1');
-    touch('opt/vpn_desk/vpn_desk');
-    touch('opt/vpn_desk/vpndesk-uninstall');
-    touch('var/lib/vpn_desk/data/state');
-    touch('run/vpn_desk/state');
-    touch('usr/bin/vpndesk-restore');
-    touch('usr/share/applications/io.vpndesk.VPNDesk.desktop');
-    touch('usr/share/polkit-1/actions/io.vpndesk.net.policy');
-    touch('usr/share/icons/hicolor/512x512/apps/vpn_desk.png');
+    touch('opt/oniondesk/oniondesk');
+    touch('opt/oniondesk/oniondesk-uninstall');
+    touch('var/lib/oniondesk/data/state');
+    touch('run/oniondesk/state');
+    touch('usr/bin/oniondesk-restore');
+    touch('usr/share/applications/io.github.sandipbera35.OnionDesk.desktop');
+    touch('usr/share/polkit-1/actions/io.github.sandipbera35.OnionDesk.net.policy');
+    touch('usr/share/icons/hicolor/512x512/apps/oniondesk.png');
     touch('usr/bin/unrelated-tool');
     touch('opt/other_app/keep');
     touch('var/lib/other/keep');
@@ -61,12 +61,12 @@ void main() {
     final r = await sb.run();
     expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
     expect((r.stdout as String).trim().split('\n'), ['STEP:firewall:Removing firewall rules', 'STEP:package:Removing application files', 'STEP:system:Removing system helper and data', 'DONE']);
-    expect(sb.calls, contains('rpm -e vpn-desk'));
-    expect(sb.calls, contains('nft delete table inet vpndesk'));
-    expect(sb.calls, contains('pkill -u vpndesk -x tor'));
-    expect(sb.calls, contains('userdel vpndesk'));
-    expect(sb.has('var/lib/vpn_desk'), isFalse);
-    expect(sb.has('run/vpn_desk'), isFalse);
+    expect(sb.calls, contains('rpm -e oniondesk'));
+    expect(sb.calls, contains('nft delete table inet oniondesk'));
+    expect(sb.calls, contains('pkill -u oniondesk -x tor'));
+    expect(sb.calls, contains('userdel oniondesk'));
+    expect(sb.has('var/lib/oniondesk'), isFalse);
+    expect(sb.has('run/oniondesk'), isFalse);
     expect(sb.has('usr/bin/unrelated-tool'), isTrue);
     expect(sb.has('opt/other_app/keep'), isTrue);
     expect(sb.has('var/lib/other/keep'), isTrue);
@@ -77,7 +77,7 @@ void main() {
     addTearDown(sb.dispose);
     final r = await sb.run();
     expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
-    expect(sb.calls, contains('--purge vpn-desk'));
+    expect(sb.calls, contains('--purge oniondesk'));
     expect(sb.calls, isNot(contains('rpm -e')));
   });
 
@@ -86,10 +86,10 @@ void main() {
     addTearDown(sb.dispose);
     final r = await sb.run();
     expect(r.exitCode, 1);
-    expect(r.stdout, contains('ERROR:rpm could not remove vpn-desk: database is locked'));
+    expect(r.stdout, contains('ERROR:rpm could not remove oniondesk: database is locked'));
     expect(r.stdout, isNot(contains('DONE')));
     expect(r.stdout, isNot(contains('STEP:system')));
-    expect(sb.has('var/lib/vpn_desk'), isTrue, reason: 'nothing past the failed step is touched');
+    expect(sb.has('var/lib/oniondesk'), isTrue, reason: 'nothing past the failed step is touched');
     expect(sb.calls, isNot(contains('userdel')));
   });
 
@@ -98,14 +98,14 @@ void main() {
     addTearDown(sb.dispose);
     final r = await sb.run();
     expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
-    for (final gone in ['opt/vpn_desk', 'usr/bin/vpndesk-restore', 'usr/share/applications/io.vpndesk.VPNDesk.desktop', 'usr/share/polkit-1/actions/io.vpndesk.net.policy', 'usr/share/icons/hicolor/512x512/apps/vpn_desk.png']) {
+    for (final gone in ['opt/oniondesk', 'usr/bin/oniondesk-restore', 'usr/share/applications/io.github.sandipbera35.OnionDesk.desktop', 'usr/share/polkit-1/actions/io.github.sandipbera35.OnionDesk.net.policy', 'usr/share/icons/hicolor/512x512/apps/oniondesk.png']) {
       expect(sb.has(gone), isFalse, reason: gone);
     }
     expect(sb.has('usr/bin/unrelated-tool'), isTrue);
     expect(sb.has('opt/other_app/keep'), isTrue);
   });
 
-  test('no vpndesk user (system-wide mode never used): no userdel', () async {
+  test('no oniondesk user (system-wide mode never used): no userdel', () async {
     final sb = Sandbox(userExists: false);
     addTearDown(sb.dispose);
     final r = await sb.run();
@@ -120,6 +120,6 @@ void main() {
     final r = await sb.run();
     expect(r.exitCode, 1);
     expect(r.stdout, contains('ERROR:'));
-    expect(sb.has('opt/vpn_desk'), isTrue);
+    expect(sb.has('opt/oniondesk'), isTrue);
   });
 }

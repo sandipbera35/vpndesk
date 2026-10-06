@@ -4,12 +4,12 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpn_desk/platform.dart';
-import 'package:vpn_desk/session.dart';
+import 'package:oniondesk/platform.dart';
+import 'package:oniondesk/session.dart';
 
 void main() {
   test("killStaleTor never kills a process that is not our tor (recycled pid / user's own process)", () async {
-    final cfg = Directory.systemTemp.createTempSync('vpndesk_cfg_');
+    final cfg = Directory.systemTemp.createTempSync('oniondesk_cfg_');
     Plat.configDirOverride = cfg;
     final other = await Process.start('sleep', ['60']);
     addTearDown(() {

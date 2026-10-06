@@ -1,21 +1,21 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpn_desk/torrc.dart';
+import 'package:oniondesk/torrc.dart';
 
 String golden(String name) => File('test/golden/$name').readAsStringSync();
 
 void main() {
-  const geoip = 'GeoIPFile /opt/vpn_desk/tor/geoip\nGeoIPv6File /opt/vpn_desk/tor/geoip6\n';
+  const geoip = 'GeoIPFile /opt/oniondesk/tor/geoip\nGeoIPv6File /opt/oniondesk/tor/geoip6\n';
 
   test('pinned exit + guards (golden)', () {
     expect(
-        buildTorrc(dataDir: '/home/u/.config/vpn_desk', exitNodes: r'$AAAA', geoipLines: geoip, controlLines: '', entryNodes: r'$G1,$G2', ownerPid: 4242),
+        buildTorrc(dataDir: '/home/u/.config/oniondesk', exitNodes: r'$AAAA', geoipLines: geoip, controlLines: '', entryNodes: r'$G1,$G2', ownerPid: 4242),
         golden('torrc_pinned.txt'));
   });
 
   test('whole-country exit, no guards (golden)', () {
-    expect(buildTorrc(dataDir: '/home/u/.config/vpn_desk', exitNodes: '{de}', geoipLines: geoip, controlLines: '', entryNodes: '', ownerPid: 4242),
+    expect(buildTorrc(dataDir: '/home/u/.config/oniondesk', exitNodes: '{de}', geoipLines: geoip, controlLines: '', entryNodes: '', ownerPid: 4242),
         golden('torrc_country.txt'));
   });
 

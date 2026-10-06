@@ -2,20 +2,20 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-/// Crash journal: `~/.local/state/vpndesk/session.json`.
+/// Crash journal: `~/.local/state/oniondesk/session.json`.
 ///
 /// Written (atomically) *before* the app changes anything on the system and deleted only after a clean
-/// disconnect. If the app is killed, `vpndesk-restore` reads it to undo exactly what was changed.
+/// disconnect. If the app is killed, `oniondesk-restore` reads it to undo exactly what was changed.
 /// The file is flat JSON with one `"key": value` per line so the bash script can read it without jq.
 class Session {
-  /// Tests point this at a temp dir; otherwise `$VPNDESK_STATE_DIR` or the XDG state dir is used.
+  /// Tests point this at a temp dir; otherwise `$ONIONDESK_STATE_DIR` or the XDG state dir is used.
   static Directory? dirOverride;
 
   static Directory get dir {
     final env = Platform.environment;
     final path = dirOverride?.path ??
-        env['VPNDESK_STATE_DIR'] ??
-        '${env['XDG_STATE_HOME'] ?? '${env['HOME'] ?? Directory.systemTemp.path}/.local/state'}/vpndesk';
+        env['ONIONDESK_STATE_DIR'] ??
+        '${env['XDG_STATE_HOME'] ?? '${env['HOME'] ?? Directory.systemTemp.path}/.local/state'}/oniondesk';
     return Directory(path);
   }
 
@@ -54,7 +54,7 @@ class Session {
       'tor_start': 0,
       'tor_exe': '',
       'proxy_changed': false,
-      'nft_table': mode == 'system-wide' ? 'inet vpndesk' : '',
+      'nft_table': mode == 'system-wide' ? 'inet oniondesk' : '',
     };
     _write();
   }

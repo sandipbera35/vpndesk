@@ -9,11 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpn_desk/uninstall.dart';
-import 'package:vpn_desk/uninstall_page.dart';
+import 'package:oniondesk/uninstall.dart';
+import 'package:oniondesk/uninstall_page.dart';
 
 UninstallPlan pkgPlan({bool data = true}) =>
-    UninstallPlan.detect(exe: '/opt/vpn_desk/vpn_desk', env: {'HOME': '/home/u'}, deleteData: data, exists: (_) => true);
+    UninstallPlan.detect(exe: '/opt/oniondesk/oniondesk', env: {'HOME': '/home/u'}, deleteData: data, exists: (_) => true);
 
 Future<void> loadFonts() async {
   for (final f in [('Roboto', '/opt/flutter/bin/cache/artifacts/material_fonts/Roboto-Regular.ttf'), ('Roboto', '/opt/flutter/bin/cache/artifacts/material_fonts/Roboto-Bold.ttf'), ('MaterialIcons', '/opt/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf')]) {
@@ -66,7 +66,7 @@ void main() {
     addTearDown(t.view.reset);
     await t.pumpWidget(page());
     await settle(t);
-    expect(find.text('Uninstalling VPN Desk'), findsOneWidget);
+    expect(find.text('Uninstalling OnionDesk'), findsOneWidget);
     for (final s in pkgPlan().steps) {
       expect(find.text(s.label), findsOneWidget);
     }
@@ -78,7 +78,7 @@ void main() {
     await settle(t, 600);
     ctl.add(const UninstallEvent.finished());
     await settle(t, 2000);
-    expect(find.text('VPN Desk has been uninstalled'), findsOneWidget);
+    expect(find.text('OnionDesk has been uninstalled'), findsOneWidget);
     expect(find.textContaining('Closing in'), findsOneWidget);
     await settle(t, 2500);
     expect(exits, 1, reason: 'asks the app to exit once the countdown ends');
@@ -98,10 +98,10 @@ void main() {
     )));
     await t.tap(find.text('go'));
     await settle(t);
-    expect(find.text('Uninstalling VPN Desk'), findsOneWidget);
+    expect(find.text('Uninstalling OnionDesk'), findsOneWidget);
     await t.binding.handlePopRoute();
     await settle(t, 800);
-    expect(find.text('Uninstalling VPN Desk'), findsOneWidget, reason: 'still on the page');
+    expect(find.text('Uninstalling OnionDesk'), findsOneWidget, reason: 'still on the page');
   });
 
   testWidgets('cancelled administrator prompt: shows the message, Back and Try again; Try again restarts', (t) async {
@@ -114,12 +114,12 @@ void main() {
     await settle(t, 1200);
     expect(find.text('Uninstall cancelled'), findsOneWidget);
     expect(find.textContaining('Nothing was removed'), findsOneWidget);
-    expect(find.text('Back to VPN Desk'), findsOneWidget);
+    expect(find.text('Back to OnionDesk'), findsOneWidget);
     expect(starts, 1);
     await t.tap(find.text('Try again'));
     await settle(t, 600);
     expect(starts, 2);
-    expect(find.text('Uninstalling VPN Desk'), findsOneWidget);
+    expect(find.text('Uninstalling OnionDesk'), findsOneWidget);
   });
 
   testWidgets('a hard failure offers Close and Try again', (t) async {
@@ -128,7 +128,7 @@ void main() {
     addTearDown(t.view.reset);
     await t.pumpWidget(page());
     await settle(t);
-    ctl.add(const UninstallEvent.failed('package', 'rpm could not remove vpn-desk: database is locked'));
+    ctl.add(const UninstallEvent.failed('package', 'rpm could not remove oniondesk: database is locked'));
     await settle(t, 1200);
     expect(find.text('Uninstall stopped'), findsOneWidget);
     expect(find.textContaining('database is locked'), findsOneWidget);
@@ -145,7 +145,7 @@ void main() {
     ctl.add(const UninstallEvent.finished());
     await settle(t, 3500);
     expect(find.text('Preview finished'), findsOneWidget);
-    expect(find.text('Back to VPN Desk'), findsOneWidget);
+    expect(find.text('Back to OnionDesk'), findsOneWidget);
     expect(exits, 0);
   });
 
@@ -157,7 +157,7 @@ void main() {
     await t.pumpWidget(app(Builder(builder: (ctx) => TextButton(onPressed: () async => result = await showUninstallConfirm(ctx, planFor: (d) => pkgPlan(data: d)), child: const Text('open')))));
     await t.tap(find.text('open'));
     await settle(t, 800);
-    expect(find.text('Uninstall VPN Desk?'), findsOneWidget);
+    expect(find.text('Uninstall OnionDesk?'), findsOneWidget);
     expect(find.textContaining('system-wide helper'), findsOneWidget);
     expect(find.textContaining('Your settings and saved data'), findsOneWidget);
     await t.tap(find.text('Also delete my settings and saved data'));

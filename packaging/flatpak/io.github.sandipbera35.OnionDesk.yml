@@ -1,0 +1,47 @@
+id: io.github.sandipbera35.OnionDesk
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: oniondesk
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+modules:
+  - name: tor
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/opt/oniondesk/tor
+      - cp -R tor/. /app/opt/oniondesk/tor/
+      - cp data/geoip data/geoip6 /app/opt/oniondesk/tor/
+      - chmod -R u+rwX,go+rX /app/opt/oniondesk/tor
+    sources:
+      - type: archive
+        url: https://dist.torproject.org/torbrowser/15.0.24/tor-expert-bundle-linux-x86_64-15.0.24.tar.gz
+        sha256: 8e012ec6815d7899cb64011582e2dade88e74119c6661068a2a3252de0ccd7f2
+        strip-components: 0
+  - name: oniondesk
+    buildsystem: simple
+    build-commands:
+      - rm -rf bundle/tor bundle/oniondesk-net  # tor comes from the module above; the root helper cannot work in the sandbox
+      - cp -r bundle/. /app/opt/oniondesk/
+      - mkdir -p /app/bin
+      - ln -s /app/opt/oniondesk/oniondesk /app/bin/oniondesk
+      - install -Dm644 io.github.sandipbera35.OnionDesk.desktop /app/share/applications/io.github.sandipbera35.OnionDesk.desktop
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.sandipbera35.OnionDesk.png
+      - sed -e "s/@VERSION@/$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d+ -f1)/" -e "s/@DATE@/$(date +%F)/" -e 's#<icon type="stock">oniondesk</icon>#<icon type="stock">io.github.sandipbera35.OnionDesk</icon>#' io.github.sandipbera35.OnionDesk.metainfo.xml > io.github.sandipbera35.OnionDesk.metainfo.out.xml
+      - install -Dm644 io.github.sandipbera35.OnionDesk.metainfo.out.xml /app/share/metainfo/io.github.sandipbera35.OnionDesk.metainfo.xml
+    sources:
+      - type: dir
+        path: ../../build/linux/x64/release/bundle
+        dest: bundle
+      - type: file
+        path: io.github.sandipbera35.OnionDesk.desktop
+      - type: file
+        path: ../icon.png
+      - type: file
+        path: ../linux/io.github.sandipbera35.OnionDesk.metainfo.xml
+      - type: file
+        path: ../../pubspec.yaml

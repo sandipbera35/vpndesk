@@ -1,11 +1,11 @@
-// Drives the real app to "connected", then ends it the way $VPNDESK_CRASH_MODE (file /tmp/vpndesk_crash_mode) says:
+// Drives the real app to "connected", then ends it the way $ONIONDESK_CRASH_MODE (file /tmp/oniondesk_crash_mode) says:
 // kill (SIGKILL) | term | hup | dot (the red window dot) | disconnect (the Disconnect button). Run by tool/crash_check.sh,
 // which verifies from the outside that proxy/tor/journal are put back (watchdog + restore script).
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:vpn_desk/main.dart';
+import 'package:oniondesk/main.dart';
 
 bool has(String s) => find.textContaining(s).evaluate().isNotEmpty;
 
@@ -14,7 +14,7 @@ void main() {
   testWidgets('connect then SIGKILL', (t) async {
     t.view.physicalSize = const Size(1280, 860);
     t.view.devicePixelRatio = 1.0;
-    await t.pumpWidget(const VpnDeskApp());
+    await t.pumpWidget(const OnionDeskApp());
     await t.pump(const Duration(seconds: 3));
     await t.tap(find.text('Connect'));
     for (var i = 0; i < 240 && !(has('Protected') && !has('Not protected')); i++) {
@@ -25,7 +25,7 @@ void main() {
     for (var i = 0; i < 16; i++) {
       await t.pump(const Duration(milliseconds: 500));
     }
-    final mode = File('/tmp/vpndesk_crash_mode').existsSync() ? File('/tmp/vpndesk_crash_mode').readAsStringSync().trim() : 'kill';
+    final mode = File('/tmp/oniondesk_crash_mode').existsSync() ? File('/tmp/oniondesk_crash_mode').readAsStringSync().trim() : 'kill';
     if (mode == 'disconnect') {
       await t.tap(find.text('Disconnect'));
       for (var i = 0; i < 60 && !has('Not protected'); i++) {

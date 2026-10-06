@@ -3,12 +3,12 @@
 #define AppVersion "1.0.0"
 #endif
 [Setup]
-AppName=VPN Desk
+AppName=OnionDesk
 AppVersion={#AppVersion}
-DefaultDirName={autopf}\VPN Desk
-DefaultGroupName=VPN Desk
+DefaultDirName={autopf}\OnionDesk
+DefaultGroupName=OnionDesk
 OutputDir=dist
-OutputBaseFilename=VPN-Desk-{#AppVersion}-windows-setup
+OutputBaseFilename=OnionDesk-{#AppVersion}-windows-setup
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -16,7 +16,7 @@ PrivilegesRequired=lowest
 [Files]
 Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 [Icons]
-Name: "{group}\VPN Desk"; Filename: "{app}\vpn_desk.exe"
-Name: "{autodesktop}\VPN Desk"; Filename: "{app}\vpn_desk.exe"
+Name: "{group}\OnionDesk"; Filename: "{app}\oniondesk.exe"
+Name: "{autodesktop}\OnionDesk"; Filename: "{app}\oniondesk.exe"
 [Run]
-Filename: "{app}\vpn_desk.exe"; Description: "Launch VPN Desk"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\oniondesk.exe"; Description: "Launch OnionDesk"; Flags: nowait postinstall skipifsilent

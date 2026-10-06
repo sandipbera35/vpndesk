@@ -4,11 +4,11 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpn_desk/session.dart';
+import 'package:oniondesk/session.dart';
 
 import 'support/fake_system.dart';
 
-const script = 'packaging/linux/vpndesk-restore';
+const script = 'packaging/linux/oniondesk-restore';
 const proxy = FakeSystem.proxy;
 
 Future<ProcessResult> run(FakeSystem sys, [List<String> args = const ['--auto']]) =>
@@ -151,7 +151,7 @@ void main() {
     test("the user's own tor (right pid, different executable) is never touched", () async {
       final other = await sleeper();
       addTearDown(other.kill);
-      sys.writeJournal(deadAppJournal(extra: {'tor_pid': other.pid, 'tor_start': Session.startTime(other.pid), 'tor_exe': '/opt/vpn_desk/tor/tor'}));
+      sys.writeJournal(deadAppJournal(extra: {'tor_pid': other.pid, 'tor_start': Session.startTime(other.pid), 'tor_exe': '/opt/oniondesk/tor/tor'}));
       await run(sys);
       expect(Session.startTime(other.pid), isNotNull);
     });
@@ -160,7 +160,7 @@ void main() {
   group('system-wide firewall', () {
     test('a stale active table is removed through the helper via pkexec', () async {
       sys.setNetState('active');
-      sys.writeJournal(deadAppJournal(extra: {'mode': 'system-wide', 'nft_table': 'inet vpndesk'}));
+      sys.writeJournal(deadAppJournal(extra: {'mode': 'system-wide', 'nft_table': 'inet oniondesk'}));
       final r = await run(sys);
       expect(r.exitCode, 10, reason: '${r.stdout}${r.stderr}');
       expect(sys.pkexecCalls, ['${sys.helper.path} stop']);

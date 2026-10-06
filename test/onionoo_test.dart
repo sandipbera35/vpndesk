@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpn_desk/onionoo.dart';
+import 'package:oniondesk/onionoo.dart';
 
 void main() {
   late Directory dir;

@@ -5,8 +5,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vpn_desk/platform.dart';
-import 'package:vpn_desk/session.dart';
+import 'package:oniondesk/platform.dart';
+import 'package:oniondesk/session.dart';
 
 import 'support/fake_system.dart';
 

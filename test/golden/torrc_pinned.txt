@@ -1,9 +1,9 @@
 SocksPort 9050 NoIsolateSOCKSAuth NoIsolateClientAuth NoIsolateClientProtocol NoIsolateDestPort IsolateDestAddr
-DataDirectory /home/u/.config/vpn_desk/data
+DataDirectory /home/u/.config/oniondesk/data
 ExitNodes $AAAA
 StrictNodes 1
-GeoIPFile /opt/vpn_desk/tor/geoip
-GeoIPv6File /opt/vpn_desk/tor/geoip6
+GeoIPFile /opt/oniondesk/tor/geoip
+GeoIPv6File /opt/oniondesk/tor/geoip6
 EntryNodes $G1,$G2
 MaxCircuitDirtiness 86400
 NewCircuitPeriod 86400

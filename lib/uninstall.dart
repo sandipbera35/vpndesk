@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-/// How this copy of VPN Desk got onto the machine, which decides what "uninstall" can remove.
+/// How this copy of OnionDesk got onto the machine, which decides what "uninstall" can remove.
 enum InstallKind {
-  /// .deb / .rpm under /opt/vpn_desk: removed by the root-owned `vpndesk-uninstall` (one administrator prompt).
+  /// .deb / .rpm under /opt/oniondesk: removed by the root-owned `oniondesk-uninstall` (one administrator prompt).
   package,
 
-  /// `install.sh` copy under ~/.local/share/vpn_desk: removed without administrator rights.
+  /// `install.sh` copy under ~/.local/share/oniondesk: removed without administrator rights.
   dev,
 
   /// Anything else (a build directory, an extracted archive): only the user's settings are removed, never the folder.
@@ -42,8 +42,8 @@ class UninstallEvent {
         finished = true;
 }
 
-/// Files VPN Desk is allowed to delete as the user. Anything else is refused, whatever the caller passes.
-const _deletableNames = {'vpn_desk', 'vpndesk', 'vpn_desk-dev.desktop', 'vpn_desk.desktop', 'vpn_desk.png'};
+/// Files OnionDesk is allowed to delete as the user. Anything else is refused, whatever the caller passes.
+const _deletableNames = {'oniondesk', 'oniondesk-dev.desktop', 'oniondesk.desktop', 'oniondesk.png'};
 
 bool isSafeUserPath(String path, String home) {
   if (home.isEmpty || !home.startsWith('/') || home == '/') return false;
@@ -74,19 +74,19 @@ class UninstallPlan {
     exists ??= (p) => File(p).existsSync();
     final home = env['HOME'] ?? '';
     final exeDir = exe.substring(0, exe.lastIndexOf('/'));
-    final config = '${env['XDG_CONFIG_HOME'] ?? '$home/.config'}/vpn_desk';
-    final state = '${env['XDG_STATE_HOME'] ?? '$home/.local/state'}/vpndesk';
+    final config = '${env['XDG_CONFIG_HOME'] ?? '$home/.config'}/oniondesk';
+    final state = '${env['XDG_STATE_HOME'] ?? '$home/.local/state'}/oniondesk';
     final share = env['XDG_DATA_HOME'] ?? '$home/.local/share';
 
     final InstallKind kind;
     String? script;
     final app = <String>[];
-    if (exeDir == '/opt/vpn_desk' && exists('/opt/vpn_desk/vpndesk-uninstall')) {
+    if (exeDir == '/opt/oniondesk' && exists('/opt/oniondesk/oniondesk-uninstall')) {
       kind = InstallKind.package;
-      script = '/opt/vpn_desk/vpndesk-uninstall';
-    } else if (exeDir == '$share/vpn_desk') {
+      script = '/opt/oniondesk/oniondesk-uninstall';
+    } else if (exeDir == '$share/oniondesk') {
       kind = InstallKind.dev;
-      app.addAll(['$share/applications/vpn_desk-dev.desktop', '$share/applications/vpn_desk.desktop', '$share/icons/hicolor/512x512/apps/vpn_desk.png', '$share/vpn_desk']);
+      app.addAll(['$share/applications/oniondesk-dev.desktop', '$share/applications/oniondesk.desktop', '$share/icons/hicolor/512x512/apps/oniondesk.png', '$share/oniondesk']);
     } else {
       kind = InstallKind.portable;
     }
@@ -108,10 +108,10 @@ class UninstallPlan {
 
   /// Human-readable list for the confirmation dialog.
   List<String> get willRemove => [
-        if (kind == InstallKind.package) 'VPN Desk and its menu entry (administrator permission is asked once)',
-        if (kind == InstallKind.package) 'The system-wide helper, its firewall table and the "vpndesk" system user',
-        if (kind == InstallKind.dev) 'The developer install in ~/.local/share/vpn_desk and its menu entry',
-        if (deleteData) 'Your settings and saved data (~/.config/vpn_desk)',
+        if (kind == InstallKind.package) 'OnionDesk and its menu entry (administrator permission is asked once)',
+        if (kind == InstallKind.package) 'The system-wide helper, its firewall table and the "oniondesk" system user',
+        if (kind == InstallKind.dev) 'The developer install in ~/.local/share/oniondesk and its menu entry',
+        if (deleteData) 'Your settings and saved data (~/.config/oniondesk)',
       ];
 
   /// What stays, shown so nothing is a surprise.
