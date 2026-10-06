@@ -56,7 +56,7 @@ Package names are lowercase (`oniondesk`). After the one-time repository setup, 
 
 ### Or download a package manually
 
-Download the package for your machine from the [**Releases**](https://github.com/sandipbera35/vpndesk/releases) page:
+Download the package for your machine (Linux `.deb`/`.rpm`/`.tar.gz`, macOS `.dmg`, Windows `-setup.exe`) from the [**Releases**](https://github.com/sandipbera35/vpndesk/releases) page:
 
 | Your system | Package |
 |---|---|
@@ -87,8 +87,10 @@ Then launch **OnionDesk** from your application menu (or run `/opt/oniondesk/oni
 |---|---|
 | 🐧 Linux x86_64 | ✅ Built and tested |
 | 🐧 Linux arm64 | ✅ Built by CI (Tor compiled from source); not yet run on real hardware |
-| 🍎 macOS | 🚧 Project scaffolding and `.dmg` script included, **not yet built or tested** |
-| 🪟 Windows | 🚧 Project scaffolding and installer script included, **not yet built or tested** |
+| 🍎 macOS (Apple Silicon + Intel) | 🧪 `.dmg` built by CI; not yet run on real hardware. Not notarized: open **System Settings → Privacy & Security → Open Anyway**, or run `xattr -cr /Applications/OnionDesk.app` |
+| 🪟 Windows x64 + arm64 | 🧪 Setup `.exe` built by CI; not yet run on real hardware. Windows may show a SmartScreen warning (unsigned): **More info → Run anyway**. arm64 bundles the x64 `tor.exe`, which runs under Windows' emulation |
+
+Windows and macOS use the app's local SOCKS5 proxy mode (it sets the OS proxy and restores your previous one, also after a crash on the next start). System-wide mode and the in-app uninstaller are Linux-only.
 
 ---
 

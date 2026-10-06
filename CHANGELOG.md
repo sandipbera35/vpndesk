@@ -3,6 +3,12 @@
 ## Highlights
 - **Uninstall from the app** (Linux): About > Uninstall. Asks to confirm, then removes the app, its system helper and (optionally) your settings, with an animated progress page. Administrator permission is asked once; cancelling removes nothing. Set `VPNDESK_UNINSTALL_DRYRUN=1` to preview the flow without removing anything.
 
+## 1.1.1 (2026-10-06)
+
+- **Windows installers** (x64 + arm64, Inno Setup, Tor bundled) and **macOS DMGs** (Apple Silicon + Intel) are now built by CI and attached to each release.
+- Windows: the system proxy you had before is remembered and put back on disconnect, and a leftover OnionDesk proxy from a killed session is cleared on the next start.
+- Linux packages are unchanged.
+
 ## 1.1.0 (2026-10-06)
 
 ### Renamed to OnionDesk
