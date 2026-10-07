@@ -12,6 +12,7 @@ permissions:
   contents: write
 jobs:
   linux:
+    if: github.event_name == 'push'   # a manual dispatch only re-attaches mac/windows or rebuilds the package repo
     strategy:
       fail-fast: false
       matrix:
@@ -71,15 +72,17 @@ jobs:
     # Needs repo secrets GPG_PRIVATE_KEY (armored) and GPG_KEY_ID, and Pages set to the gh-pages branch.
     needs: linux
     continue-on-error: true   # stays red until the signing secrets exist; the release itself is unaffected
-    if: startsWith(github.ref, 'refs/tags/v')
+    # after a tag build, or by hand: workflow_dispatch with tag=vX.Y.Z rebuilds the repo from that release's packages
+    if: always() && (needs.linux.result == 'success' || needs.linux.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils createrepo-c gnupg
+      # The packages are already attached to the release by the linux job (needs: linux).
+      - name: Download the release packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ inputs.tag || github.ref_name }}" -p '*.deb' -p '*.rpm' -D dist
+      - run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils createrepo-c gnupg rpm
       - name: Import signing key
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}

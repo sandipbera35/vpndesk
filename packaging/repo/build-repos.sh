@@ -30,6 +30,8 @@ gpg --batch --yes --default-key "$GPG_KEY_ID" --clearsign -o "$APT/dists/stable/
 for A in x86_64 aarch64; do
   mkdir -p "$OUT/rpm/$A"
   cp dist/*."$A".rpm "$OUT/rpm/$A/" 2>/dev/null || true
+  # sign the packages themselves so dnf can check them (gpgcheck=1) as well as the repo metadata
+  rpmsign --define "_gpg_name $GPG_KEY_ID" --define "__gpg /usr/bin/gpg" --addsign "$OUT"/rpm/$A/*.rpm
   createrepo_c "$OUT/rpm/$A"
   gpg --batch --yes --default-key "$GPG_KEY_ID" --detach-sign --armor "$OUT/rpm/$A/repodata/repomd.xml"
 done
@@ -38,7 +40,7 @@ cat > "$OUT/oniondesk.repo" <<REPO
 name=OnionDesk
 baseurl=$BASE_URL/rpm/\$basearch
 enabled=1
-gpgcheck=0
+gpgcheck=1
 repo_gpgcheck=1
 gpgkey=$BASE_URL/oniondesk.asc
 REPO
@@ -46,7 +48,7 @@ REPO
 cat > "$OUT/index.html" <<HTML
 <!doctype html><meta charset="utf-8"><title>OnionDesk package repository</title>
 <h1>OnionDesk package repository</h1>
-<p>Free, open-source Tor VPN alternative. <a href="https://github.com/sandipbera35/vpndesk">Project page</a>.</p>
+<p>Free, open-source Tor client with a live circuit visualizer. <a href="https://github.com/sandipbera35/vpndesk">Project page</a>.</p>
 <pre>
 # Debian / Ubuntu / Mint
 curl -fsSL $BASE_URL/oniondesk.gpg | sudo tee /usr/share/keyrings/oniondesk.gpg &gt;/dev/null

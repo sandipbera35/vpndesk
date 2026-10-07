@@ -2,7 +2,7 @@
 
 # 🛡️ OnionDesk
 
-**A free, open-source Tor VPN alternative: pick an exit country and browse anonymously. No account, no subscription.**
+**A free, open-source Tor client with a live circuit visualizer: pick an exit country, watch your path on the map and browse anonymously. No account, no subscription.**
 
 A modern desktop app that starts a bundled [Tor](https://www.torproject.org) client with a **strict exit in the country you choose**, shows your real and exit locations on a live map, ranks countries by **live speed estimates**, and can optionally route **every app on your computer** through Tor.
 

@@ -38,13 +38,13 @@ cat > "$STAGE/usr/share/applications/io.github.sandipbera35.OnionDesk.desktop" <
 [Desktop Entry]
 Type=Application
 Name=OnionDesk
-GenericName=Tor VPN alternative
-Comment=Browse through Tor from a country you choose
+GenericName=Tor client and circuit visualizer
+Comment=Browse anonymously through Tor from a country you choose, watch your circuit live, or use I2P
 Exec=/opt/oniondesk/oniondesk
 Icon=oniondesk
 Terminal=false
 Categories=Network;Security;
-Keywords=Tor;VPN;Onion;Proxy;SOCKS5;Privacy;Anonymity;Security;Censorship;
+Keywords=Tor;Tor client;Tor visualizer;Circuit visualizer;VPN;Onion;Proxy;SOCKS5;Privacy;Anonymity;Security;Censorship;I2P;Browser;Onion routing;Bridges;obfs4;Snowflake;Split tunneling;Leak test;
 StartupWMClass=oniondesk
 EOF
 # AppStream metadata (what software centers show), with this build's version and date
@@ -77,12 +77,21 @@ Recommends: policykit-1 | polkitd, pkexec | policykit-1
 Suggests: torsocks
 Maintainer: Sandip Bera <sandipbera35@gmail.com>
 Homepage: https://github.com/sandipbera35/vpndesk
-Description: Free Tor VPN alternative: pick your exit country
- OnionDesk is a free, open-source Tor client with a modern interface. It
- starts a bundled Tor client with a strict exit relay in the country
- you pick, shows your real and exit locations on a live map and ranks countries
- by live speed estimates. An optional system-wide mode routes all TCP and DNS
- traffic through Tor.
+Description: Modern Tor client with a live circuit visualizer, country exits and a private browser
+ OnionDesk is a free, open-source Tor client with a live circuit visualizer
+ (guard, middle and exit drawn on a world map). It starts a bundled Tor with a
+ strict exit relay in the country you pick (a free VPN alternative for privacy,
+ anonymity and censorship circumvention), shows your real and exit locations
+ and ranks countries by live speed estimates. An optional system-wide mode
+ routes all TCP and DNS traffic through Tor.
+ .
+ It also has an I2P tab (beta, bundled i2pd router, per-app split tunneling)
+ and OnionDesk Browser (beta), a private browser inside the app that reaches
+ the web only through Tor and .i2p sites only through I2P. Bridges (obfs4,
+ Snowflake, meek), a leak test and an ad blocker are included.
+ .
+ Testers welcome: please report bugs, ideas and how it runs on your
+ distribution at https://github.com/sandipbera35/vpndesk/issues
 EOF
 mkdir -p "$DIST"
 dpkg-deb --root-owner-group --build "$STAGE" "$DIST/oniondesk_${VERSION}_${DEBARCH}.deb" 2>/dev/null || \
@@ -99,7 +108,7 @@ cat > "$TOPDIR/SPECS/oniondesk.spec" <<EOF
 Name: oniondesk
 Version: $VERSION
 Release: 1
-Summary: Free Tor VPN alternative: pick your exit country
+Summary: Modern Tor client with a live circuit visualizer, country exits and a private browser
 Obsoletes: vpn-desk < 99
 License: Apache-2.0
 URL: https://github.com/sandipbera35/vpndesk
@@ -111,9 +120,18 @@ AutoReqProv: no
 Source0: oniondesk-${VERSION}-bundle.tar.gz
 
 %description
-OnionDesk starts a bundled Tor client with a strict exit relay in the country you pick,
-shows your real and exit locations on a live map and ranks countries by live speed
-estimates. An optional system-wide mode routes all TCP and DNS traffic through Tor.
+OnionDesk is a free, open-source Tor client with a live circuit visualizer (guard, middle and exit on a
+world map). It starts a bundled Tor with a strict exit relay in the country you pick (a free VPN
+alternative for privacy, anonymity and censorship circumvention), shows your real and exit locations and
+ranks countries by live speed estimates. An optional system-wide mode routes all TCP and DNS traffic
+through Tor.
+
+It also has an I2P tab (beta, bundled i2pd, per-app split tunneling) and OnionDesk Browser (beta), a
+private browser inside the app that reaches the web only through Tor and .i2p sites only through I2P.
+Bridges (obfs4, Snowflake, meek), a leak test and an ad blocker are included.
+
+Testers welcome: please report bugs, ideas and how it runs on your distribution at
+https://github.com/sandipbera35/vpndesk/issues
 
 %install
 mkdir -p %{buildroot}

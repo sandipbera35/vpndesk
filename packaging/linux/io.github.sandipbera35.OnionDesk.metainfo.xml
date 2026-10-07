@@ -4,13 +4,13 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
   <name>OnionDesk</name>
-  <summary>Free Tor VPN alternative: pick your exit country</summary>
+  <summary>Modern Tor client with a live circuit visualizer, country exits and a private browser</summary>
   <developer id="io.github.sandipbera35">
     <name>Sandip Bera</name>
   </developer>
   <description>
     <p>
-      OnionDesk is a free and open-source Tor client with a modern interface. It starts a bundled Tor client with a
+      OnionDesk is a free and open-source Tor client with a modern interface and a live circuit visualizer (guard, middle, exit on a world map). It starts a bundled Tor client with a
       strict exit relay in the country you pick, shows your real and exit locations on a live world map, and ranks
       countries by live speed estimates. No account, no subscription, no telemetry.
     </p>
@@ -20,23 +20,36 @@
       <li>Live world map with animated pins for your real and exit IP</li>
       <li>Optional system-wide mode that sends all TCP and DNS traffic from every app through Tor (asks for administrator permission once)</li>
       <li>Crash-safe: your normal network settings are always restored, even if the app is killed</li>
+      <li>I2P tab (beta) with a bundled i2pd router and per-app split tunneling, for .i2p sites</li>
+      <li>OnionDesk Browser (beta): tabs and full view inside the app, using Tor for the web and I2P for .i2p, with no direct connection</li>
+      <li>Leak test, circuit visualizer, bridges (obfs4, Snowflake, meek), ad blocker, new identity and auto-rotate</li>
       <li>Tor is bundled, so there is nothing else to install</li>
     </ul>
     <p>
       By default it is a local SOCKS5 proxy, so only apps that honour the system proxy are covered. Tor is slower
       than a commercial VPN and cannot carry UDP traffic. OnionDesk is not affiliated with the Tor Project.
     </p>
+    <p>
+      Testers welcome: please try it on your distribution and report what works and what does not (bugs, ideas, your
+      distribution and desktop) at the issue tracker or by email.
+    </p>
   </description>
   <launchable type="desktop-id">io.github.sandipbera35.OnionDesk.desktop</launchable>
   <icon type="stock">oniondesk</icon>
   <url type="homepage">https://github.com/sandipbera35/vpndesk</url>
   <url type="bugtracker">https://github.com/sandipbera35/vpndesk/issues</url>
+  <url type="help">https://github.com/sandipbera35/vpndesk#readme</url>
+  <url type="faq">https://github.com/sandipbera35/vpndesk#-faq--limitations</url>
+  <url type="vcs-browser">https://github.com/sandipbera35/vpndesk</url>
   <categories>
     <category>Network</category>
     <category>Security</category>
   </categories>
   <keywords>
     <keyword>Tor</keyword>
+    <keyword>Tor client</keyword>
+    <keyword>Tor visualizer</keyword>
+    <keyword>Circuit visualizer</keyword>
     <keyword>VPN</keyword>
     <keyword>Onion</keyword>
     <keyword>Proxy</keyword>
@@ -48,6 +61,16 @@
     <keyword>Exit node</keyword>
     <keyword>Country</keyword>
     <keyword>IP address</keyword>
+    <keyword>I2P</keyword>
+    <keyword>Browser</keyword>
+    <keyword>Private browsing</keyword>
+    <keyword>Onion routing</keyword>
+    <keyword>Bridges</keyword>
+    <keyword>obfs4</keyword>
+    <keyword>Snowflake</keyword>
+    <keyword>Split tunneling</keyword>
+    <keyword>Leak test</keyword>
+    <keyword>Circumvention</keyword>
   </keywords>
   <branding>
     <color type="primary" scheme_preference="light">#7de8d8</color>
@@ -60,8 +83,9 @@
   <releases>
     <release version="@VERSION@" date="@DATE@">
       <description>
-        <p>See the release notes on GitHub for what changed.</p>
+        <p>I2P tab (beta), OnionDesk Browser (beta), clean exit, redesigned About page. See the release notes on GitHub.</p>
       </description>
+      <url type="details">https://github.com/sandipbera35/vpndesk/releases</url>
     </release>
   </releases>
 </component>
