@@ -85,7 +85,7 @@
   <releases>
     <release version="@VERSION@" date="@DATE@">
       <description>
-        <p>I2P tab (beta), OnionDesk Browser (beta), clean exit, redesigned About page. See the release notes on GitHub.</p>
+        <p>Privacy policy, legal notices and security policy inside the app; signed apt and dnf repositories; more careful wording of what the app does and does not guarantee. See the release notes on GitHub.</p>
       </description>
       <url type="details">https://github.com/sandipbera35/vpndesk/releases</url>
     </release>
