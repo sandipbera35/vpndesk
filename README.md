@@ -38,6 +38,9 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 | 🚀 **Start at login / connect on launch** | Optional, off by default (Linux, Windows, macOS). |
 | 🧩 **Run an app through OnionDesk** | Pick an installed app (Linux `.desktop` files incl. Flatpak/Snap, macOS `/Applications`, Windows Start Menu) and start it with the proxy set; browsers get a private profile with remote DNS and WebRTC off. On Linux, `torsocks` (if installed) forces apps that ignore proxy settings. Windows/macOS cannot force such apps; use System-wide mode (Linux) for full coverage. True per-app kernel routing (WFP, network namespaces, Network Extensions) is not implemented. |
 | ⭐ **Everyday comfort** | Favorite countries, copy buttons for the IPs and the SOCKS5 address, shortcuts (Ctrl/Cmd+K search, Ctrl/Cmd+Enter connect, Ctrl/Cmd+N new identity), a session timer with data counters, a "Reconnect to …" chip, desktop notifications when the connection drops or your exit changes, settings export/import and a Light theme. |
+| 🧅 **I2P tab** (beta) | A second tab runs the bundled [`i2pd`](https://i2pd.website) router (an installed one is used if a build lacks it) for `.i2p` sites and I2P apps: Start/Stop, live status, copyable proxy addresses, and **split tunneling**: add the apps you want and launch them with the I2P proxy set. Changes no system setting, never touches an I2P router it did not start. It is a separate network: no country exits and no speed-up for normal sites (use the Tor tab for that). |
+| 🌐 **OnionDesk Browser** (beta) | A browser inside the app, on the Chromium Embedded Framework: modern sites, JavaScript, VP8/VP9/AV1 video, tabs and a full view. It uses whatever is connected (Tor for the web, I2P for `.i2p`, both together) through one local proxy and refuses everything else, so it cannot leak a direct connection. Adds ~250 MB; no H.264/AAC (open-source Chromium build); not on Windows arm64. |
+| 🧹 **Clean exit** | Closing OnionDesk (even a hard kill) stops everything it started: Tor, i2pd and the browser helpers. A small detached guard reaps an orphaned `i2pd` on the next start. |
 | 🔔 **Update notice** | Checks GitHub releases (can be turned off in More). Nothing is installed automatically. |
 | 🌐 **6 languages** | English, हिन्दी, বাংলা, Español, العربية (right-to-left), Русский. First-draft translations; corrections welcome. |
 | 🔒 **No accounts, no telemetry** | The app only talks to the Tor network, the Tor Project relay directory, IP-lookup and speed-test services. |
@@ -215,6 +218,9 @@ pgrep -a tor
 | [libevent](https://libevent.org), [OpenSSL](https://www.openssl.org), [zlib](https://zlib.net) | Libraries bundled with Tor | BSD-3 / Apache-2.0 / zlib |
 | [bitsdojo_window](https://pub.dev/packages/bitsdojo_window) | Frameless window with custom controls | MIT |
 | [socks5_proxy](https://pub.dev/packages/socks5_proxy) | Sends the app's own requests through Tor | MIT |
+| [i2pd](https://i2pd.website) | The I2P router bundled for the I2P tab (run as a separate program) | BSD-3-Clause |
+| [Chromium Embedded Framework](https://bitbucket.org/chromiumembedded/cef) via [webview_cef](https://github.com/hlwhl/webview_cef) | Engine of OnionDesk Browser (patched plugin in `third_party/`) | BSD-3-Clause / Apache-2.0 |
+| [proxychains-ng](https://github.com/rofl0r/proxychains-ng) | Forces apps through I2P on Linux (separate preload library) | GPL-2.0+ |
 | [Natural Earth](https://www.naturalearthdata.com) | Country outlines for the offline map | Public domain |
 | [Onionoo](https://metrics.torproject.org/onionoo.html) | Tor Project relay directory API | Public service |
 | [nftables](https://netfilter.org/projects/nftables/) | Firewall used by system-wide mode | GPL-2.0 (system package) |
@@ -229,6 +235,10 @@ lib/
   platform.dart      All OS-specific code (paths, tor lookup, proxy, control port, helper)
   world_map.dart     Offline animated world map (CustomPainter)
   about_page.dart    Animated About page
+  i2p.dart, i2p_page.dart, launch_via_i2p.dart   I2P tab: bundled i2pd router, status, split tunneling
+  browser_page.dart, browser_mux.dart, browser_nav.dart   OnionDesk Browser (CEF) and its Tor/I2P-only proxy
+  process_guard.dart Stops i2pd when the app closes or dies (no orphans)
+third_party/webview_cef/   Patched CEF plugin (see ONIONDESK_PATCHES.md)
 assets/              world.json (country shapes), profile.jpg
 packaging/
   linux/             oniondesk-net helper + polkit policy
@@ -295,9 +305,7 @@ No accounts, no analytics, no telemetry.
 
 ---
 
-## 🤖 Built with AI assistance
-
-OnionDesk was designed and directed by **Sandip Bera** and developed with the help of AI coding assistants: **[Claude Code](https://claude.com/claude-code)** (by Anthropic) and **[OpenCode](https://opencode.ai)**. All code was reviewed and tested by the author.
+<sub>🤖 Built with AI assistance ([Claude Code](https://claude.com/claude-code), [OpenCode](https://opencode.ai)); directed, reviewed and tested by the author.</sub>
 
 ---
 

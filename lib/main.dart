@@ -13,11 +13,16 @@ import 'package:socks5_proxy/socks_client.dart';
 import 'about_page.dart';
 import 'autostart.dart';
 import 'blocklist.dart';
+import 'browser_page.dart';
+import 'package:webview_cef/webview_cef.dart' show WebviewManager;
 import 'bridges.dart';
 import 'connect_ring.dart';
 import 'blocklist_update.dart';
 import 'estimator.dart';
 import 'extras.dart';
+import 'i2p.dart';
+import 'i2p_page.dart';
+import 'launch_via_i2p.dart';
 import 'launch_via_tor.dart';
 import 'installed_apps.dart';
 import 'leak_test.dart';
@@ -224,6 +229,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (_connectOnLaunch) Future.delayed(const Duration(seconds: 2), () { if (mounted && !running && !connecting) _start(); });
     });
     _exitListener = AppLifecycleListener(onExitRequested: () async {
+      await _i2p.stop();
+      await _quitBrowser();
       await _teardown();
       return AppExitResponse.exit;
     });
@@ -276,6 +283,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _stopTimers();
         Plat.frozen = true;
         Session.frozen = true;
+        await _i2p.stop();
+        await _quitBrowser();
         await _teardown();
         await Plat.runRestore();
         Session.end();
@@ -316,6 +325,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _dotCtrl.dispose();
     _exitListener?.dispose();
     for (final s in _sigSubs) { s.cancel(); }
+    _i2p.stop(); // not awaitable here either
     _teardown(); // not awaitable here; the watchdog + next-start recovery cover a hard exit
     super.dispose();
   }
@@ -380,6 +390,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   /// Quit the app (signal or close button): restore the system first, then exit. Never hangs forever.
   Future<void> _quit() async {
+    await _i2p.stop();
+    await _quitBrowser();
     await _teardown().timeout(const Duration(seconds: 25), onTimeout: () {});
     exit(0);
   }
@@ -658,6 +670,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       L10n.set(m['lang'] is String ? m['lang'] as String : L10n.systemLanguage());
       _recentApps = [for (final r in (m['recentApps'] as List? ?? const [])) if (r is String) r];
       _applyPortable(m);
+      _i2p.customPath = m['i2pdPath'] is String ? m['i2pdPath'] as String : null;
+      _i2p.share = m['i2pShare'] == true;
+      _i2pApps = [for (final a in (m['i2pApps'] as List? ?? const [])) if (a is String && a.trim().isNotEmpty) a];
       final lc = m['lastConnected'];
       if (lc is String && countries.containsKey(lc)) _lastConnected = lc;
       final last = m['country'];
@@ -678,7 +693,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         'excluded': _excluded.toList()..sort(), 'checkUpdates': _checkUpdates, 'dismissedUpdate': _dismissedUpdate,
         'connectOnLaunch': _connectOnLaunch, 'bridgeMode': _bridgeMode.name, 'customBridges': _customBridges,
         'lang': L10n.lang.value, 'recentApps': _recentApps, 'country': selectedCountry, 'mapMax': _mapMax,
-        'favorites': _favorites.toList()..sort(), 'notifications': _notifications, 'themeMode': _themeMode, 'lastConnected': _lastConnected,
+        'favorites': _favorites.toList()..sort(), 'notifications': _notifications, 'themeMode': _themeMode, 'lastConnected': _lastConnected, 'i2pdPath': _i2p.customPath, 'i2pShare': _i2p.share, 'i2pApps': _i2pApps,
         if (win != null && win.width >= 640 && win.height >= 560) ...{'winW': win.width.round(), 'winH': win.height.round()},
       });
       final tmp = File('${_settingsFile.path}.tmp')..writeAsStringSync(data);
@@ -824,6 +839,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String _torVersion = '';
   FocusNode? _countryFocus; // the Autocomplete's own node, captured in _countryField
   bool _wasRunning = false;
+  final I2pRouter _i2p = I2pRouter(); // the I2P tab's router: independent of Tor
+  int _tab = 0; // 0 = Tor (home), 1 = I2P, 2 = OnionDesk Browser
+  bool _browserVisited = false; // the browser (and its tabs) is created on first use and kept alive after that
+  bool _browserFull = false; // OnionDesk Browser fills the whole app window (full view)
+  final GlobalKey<BrowserPageState> _browserKey = GlobalKey();
+  List<String> _i2pApps = []; // I2P split tunneling: apps the user added
   List<({String cc, String nick})> _hops = [];
   final Map<String, String> _relayCc = {}; // relay fingerprint -> country
 
@@ -2241,6 +2262,128 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
       ]);
 
+  Widget _tabPill(String label, int i, {bool experimental = false, bool logo = false, String? betaNote}) {
+    final on = _tab == i;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () { if (_tab != i) setState(() { _tab = i; if (i == 2) _browserVisited = true; }); },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: on ? _teal.withValues(alpha: 0.18) : Colors.transparent,
+            border: Border.all(color: on ? _teal : Colors.white.withValues(alpha: 0.14)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            // OnionDesk Browser is shown by its logo (the same gradient mark as on its start screen), not by its name.
+            if (logo)
+              Tooltip(
+                message: label,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(7), gradient: const LinearGradient(colors: [_teal, Color(0xFF7C9CFF)]), boxShadow: on ? [BoxShadow(color: _teal.withValues(alpha: 0.45), blurRadius: 10)] : null),
+                  child: const Icon(Icons.travel_explore_rounded, size: 14, color: Color(0xFF07101F)),
+                ),
+              )
+            else
+              m.Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: on ? _teal : Colors.white60)),
+            if (experimental) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: L10n.tr(betaNote ?? 'Experimental: I2P support is new, slow, and many I2P sites are offline.'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), color: _amber.withValues(alpha: 0.16), border: Border.all(color: _amber.withValues(alpha: 0.6))),
+                  child: const m.Text('BETA', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: 0.6, color: _amber)),
+                ),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _toggleI2pShare() {
+    setState(() => _i2p.share = !_i2p.share);
+    _saveSettings();
+  }
+
+  Future<void> _addI2pApp() async {
+    final found = [for (final b in const ['firefox', 'chromium', 'google-chrome', 'brave-browser']) if (onPath(b)) b];
+    final apps = await scanInstalledApps();
+    if (!mounted) return;
+    final line = (await showLaunchDialog(context, recents: const [], found: found, apps: apps,
+            title: 'Add an app to I2P split tunneling',
+            blurb: 'Pick a program to start through I2P. OnionDesk sets everything up for you. Browsers get their own private profile with remote DNS and WebRTC off.',
+            note: 'No proxy setup needed: the app is started with I2P already set up. Normal websites do not work through I2P: it reaches .i2p sites only.',
+            action: 'Add'))
+        ?.trim();
+    if (line == null || line.isEmpty || !mounted) return;
+    if (!line.startsWith(kLinkPrefix)) {
+      try { splitCommand(line); } catch (e) { _toast('Not a valid command: $e'); return; }
+    }
+    if (_i2pApps.contains(line)) return;
+    setState(() => _i2pApps = [..._i2pApps, line]);
+    _saveSettings();
+  }
+
+  void _removeI2pApp(String line) {
+    setState(() => _i2pApps = [for (final a in _i2pApps) if (a != line) a]);
+    _saveSettings();
+  }
+
+  void _toast(String msg) {
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.hideCurrentSnackBar();
+    m?.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text(msg)));
+  }
+
+  /// Start a saved app with the I2P proxy set (needs the router running). Only the child process gets the proxy.
+  Future<void> _launchI2pApp(String line) async {
+    if (_i2p.state != I2pState.running) { _toast('Start I2P first.'); return; }
+    try {
+      if (line.startsWith(kLinkPrefix)) {
+        const http = 'http://$kI2pHost:$kI2pHttpPort';
+        await Process.start('cmd', ['/c', 'start', '', line.substring(kLinkPrefix.length)], environment: {'http_proxy': http, 'https_proxy': http, 'ALL_PROXY': 'socks5h://$kI2pHost:$kI2pSocksPort'}, mode: ProcessStartMode.detached);
+        _toast('Started with the I2P proxy set. Apps that ignore proxy settings are not covered.');
+        return;
+      }
+      final name = splitCommand(line).first.split(RegExp(r'[\\/]')).last.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final profile = Directory('${_cfgDir.path}/app-profiles-i2p/$name')..createSync(recursive: true);
+      final lib = bundledForceLib();
+      String? conf;
+      if (lib != null) {
+        conf = '${_i2p.dir.path}/proxychains.conf';
+        _i2p.dir.createSync(recursive: true);
+        File(conf).writeAsStringSync(proxychainsConf());
+      }
+      final spec = buildI2pLaunch(line, profileDir: profile.path, base: Platform.environment, forceLib: lib, forceConf: conf);
+      if (spec.args.contains('-no-remote')) File('${profile.path}/user.js').writeAsStringSync(firefoxI2pUserJs());
+      await Process.start(spec.executable, spec.args, environment: spec.env, mode: ProcessStartMode.detached);
+      _toast('Started "${appLabel(line)}" through I2P. ${spec.notes.join(' ')}');
+    } catch (e) {
+      _toast('Could not start "$line": $e');
+    }
+  }
+
+  /// Stop the browser engine (its helper processes) on every exit path.
+  Future<void> _quitBrowser() async {
+    if (!_browserVisited) return;
+    try { await WebviewManager().quit().timeout(const Duration(seconds: 3)); } catch (_) {}
+  }
+
+  Future<void> _locateI2pd() async {
+    final f = await openFile(confirmButtonText: 'Use this i2pd');
+    if (f == null || !mounted) return;
+    setState(() => _i2p.customPath = f.path);
+    _saveSettings();
+    _i2p.detect();
+  }
+
   Widget _aboutButton() => Row(mainAxisSize: MainAxisSize.min, children: [
         SettingsIconButton(onTap: _openSettings),
         const SizedBox(width: 8),
@@ -2317,7 +2460,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         final sideW = (box.maxWidth * 0.28).clamp(250.0, 330.0);
         return CallbackShortcuts(
           bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): () { if (_mapMax) _toggleMapMax(); }, // Esc restores the map
+            const SingleActivator(LogicalKeyboardKey.escape): () { if (_mapMax) _toggleMapMax(); if (_tab == 2 && _browserFull) setState(() => _browserFull = false); }, // Esc restores the map / the browser's normal view
+            const SingleActivator(LogicalKeyboardKey.f11): () { if (_tab == 2) setState(() => _browserFull = !_browserFull); },
+            for (final ctrl in const [true, false]) ...{
+              SingleActivator(LogicalKeyboardKey.keyT, control: ctrl, meta: !ctrl): () { if (_tab == 2) _browserKey.currentState?.newTab(); },
+              SingleActivator(LogicalKeyboardKey.keyW, control: ctrl, meta: !ctrl): () { if (_tab == 2) _browserKey.currentState?.closeCurrentTab(); },
+              SingleActivator(LogicalKeyboardKey.equal, control: ctrl, meta: !ctrl): () { if (_tab == 2) _browserKey.currentState?.zoomIn(); },
+              SingleActivator(LogicalKeyboardKey.minus, control: ctrl, meta: !ctrl): () { if (_tab == 2) _browserKey.currentState?.zoomOut(); },
+              SingleActivator(LogicalKeyboardKey.digit0, control: ctrl, meta: !ctrl): () { if (_tab == 2) _browserKey.currentState?.zoomReset(); },
+            },
             for (final ctrl in const [true, false]) ...{
               SingleActivator(LogicalKeyboardKey.keyK, control: ctrl, meta: !ctrl): () => _countryFocus?.requestFocus(),
               SingleActivator(LogicalKeyboardKey.enter, control: ctrl, meta: !ctrl): () { if (!connecting) { running ? _stop() : _start(); } },
@@ -2330,7 +2481,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           extendBodyBehindAppBar: true,
           endDrawer: showSidebar ? null : Drawer(width: 300, backgroundColor: Colors.transparent, child: Padding(padding: const EdgeInsets.all(12), child: _sidebar())),
           appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(40),
+            preferredSize: Size.fromHeight(_tab == 2 && _browserFull ? 30 : 40),
             child: GestureDetector(
               onPanStart: (_) => appWindow.startDragging(),
               onDoubleTap: () => appWindow.maximizeOrRestore(),
@@ -2343,19 +2494,26 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   _winDot(const Color(0xFFFF5F57), _quit),
                   _winDot(const Color(0xFFFEBC2E), () => appWindow.minimize()),
                   _winDot(const Color(0xFF28C840), () => appWindow.maximizeOrRestore()),
+                  if (!(_tab == 2 && _browserFull)) ...[
                   const SizedBox(width: 16),
                   ClipRRect(borderRadius: BorderRadius.circular(5), child: Image.asset('assets/icon.png', width: 20, height: 20, filterQuality: FilterQuality.medium)),
                   const SizedBox(width: 8),
                   const Text('OnionDesk', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, letterSpacing: 0.3)),
+                  const SizedBox(width: 18),
+                  _tabPill('Tor', 0),
+                  const SizedBox(width: 6),
+                  _tabPill('I2P', 1, experimental: true),
+                  const SizedBox(width: 6),
+                  _tabPill('OnionDesk Browser', 2, logo: true, experimental: true, betaNote: 'Beta: OnionDesk Browser is new. It has no JavaScript and no video player (it is not built on Chromium or any web engine). Expect rough edges.'),
+                  ],
                   const Spacer(),
-                  if (!showSidebar)
+                  if (!showSidebar && _tab == 0)
                     Builder(builder: (ctx) => TextButton.icon(
                           onPressed: () => Scaffold.of(ctx).openEndDrawer(),
                           icon: const Icon(Icons.public, size: 16),
                           label: const Text('Locations'),
                         )),
-                  const SizedBox(width: 6),
-                  _aboutButton(),
+                  if (!(_tab == 2 && _browserFull)) ...[const SizedBox(width: 6), _aboutButton()],
                 ]),
               )),
             ),
@@ -2369,17 +2527,41 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               _blob(const Alignment(1, 1), const Color(0xFF7C5CFF), 560),
               // Same top/bottom padding for the dashboard and the sidebar keeps their heights equal.
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
-                child: AnimatedSwitcher(
+                padding: _tab == 2 ? (_browserFull ? const EdgeInsets.fromLTRB(6, 32, 6, 6) : const EdgeInsets.fromLTRB(12, 42, 12, 10)) : const EdgeInsets.fromLTRB(20, 48, 20, 20),
+                child: Stack(children: [
+                  Positioned.fill(child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 280),
                   switchInCurve: Curves.easeOutCubic,
-                  child: _mapMax
+                  child: _tab == 2
+                      ? const SizedBox.shrink(key: ValueKey('browser-slot')) // the browser itself is kept alive below
+                      : _tab == 1
+                      ? KeyedSubtree(key: const ValueKey('i2p'), child: I2pPage(router: _i2p, onToggleShare: _toggleI2pShare, onLocate: _locateI2pd, apps: _i2pApps, onAddApp: _addI2pApp, onRemoveApp: _removeI2pApp, onLaunchApp: _launchI2pApp, forced: bundledForceLib() != null, onOpenBrowser: () => setState(() { _tab = 2; _browserVisited = true; })))
+                      : _mapMax
                       ? KeyedSubtree(key: const ValueKey('map-max'), child: _mapPanel())
                       : KeyedSubtree(key: const ValueKey('normal'), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Expanded(child: LayoutBuilder(builder: (_, c) => _mainColumn(c.maxWidth, box.maxHeight))),
                   if (showSidebar) ...[const SizedBox(width: 16), SizedBox(width: sideW, child: _sidebar())],
                 ])),
-                ),
+                  )),
+                  // OnionDesk Browser: created the first time it is opened, then kept alive so its tabs survive switching tabs here.
+                  if (_browserVisited)
+                    Positioned.fill(
+                      child: Offstage(
+                        offstage: _tab != 2,
+                        child: ListenableBuilder(
+                          listenable: _i2p,
+                          builder: (_, _) => BrowserPage(
+                            key: _browserKey,
+                            // Whatever is connected is used, automatically (Tor from the Tor tab, I2P from the I2P tab).
+                            torReady: running && !connecting,
+                            i2pReady: _i2p.state == I2pState.running,
+                            fullView: _browserFull,
+                            onToggleFull: () => setState(() => _browserFull = !_browserFull),
+                          ),
+                        ),
+                      ),
+                    ),
+                ]),
               ),
             ]),
           ),

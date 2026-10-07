@@ -34,11 +34,20 @@ jobs:
           git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$HOME/flutter"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm libevent-dev libssl-dev zlib1g-dev dpkg-dev appstream desktop-file-utils imagemagick
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm libevent-dev libssl-dev zlib1g-dev libboost-program-options-dev dpkg-dev appstream desktop-file-utils imagemagick
       - name: Build app
         run: flutter pub get && flutter build linux --release
-      - name: Bundle tor and package
-        run: ./bundle_tor.sh && ./package.sh
+      - name: Bundle tor
+        run: ./bundle_tor.sh
+      # i2pd for the I2P tab. Never allowed to block the release: without it the app falls back to an installed i2pd.
+      - name: Bundle i2pd (built from source, self-contained)
+        continue-on-error: true
+        run: ./build_i2pd_linux.sh "build/linux/${{ matrix.arch }}/release/bundle/i2pd"
+      - name: Bundle the I2P force shim (libproxychains4.so)
+        continue-on-error: true
+        run: ./build_proxychains_linux.sh "build/linux/${{ matrix.arch }}/release/bundle/i2pd/force"
+      - name: Package
+        run: ./package.sh
       - uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
@@ -96,7 +105,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Build tools for the browser engine (CEF wrapper)
+        run: brew install cmake ninja || true
       - name: Build app
+        env:
+          CEF_WRAPPER_BUILD_TYPE: Release
         run: flutter pub get && flutter build macos --release
       - name: Package DMG (tor bundled)
         run: ./package_mac.sh ${{ matrix.arch }}
@@ -118,10 +131,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # OnionDesk Browser (CEF) has no Windows arm64 build: arm64 PCs run this x64 installer under Windows' emulation.
           - os: windows-latest
             arch: x64
-          - os: windows-11-arm
-            arch: arm64
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -143,6 +155,9 @@ jobs:
         run: flutter pub get && flutter build windows --release
       - name: Bundle tor
         run: ./fetch_tor.sh windows x86_64 "build/windows/${{ matrix.arch }}/runner/Release/tor"
+      - name: Bundle i2pd (I2P tab; the x64 build also runs on arm64 under emulation)
+        continue-on-error: true
+        run: ./fetch_i2pd.sh windows "build/windows/${{ matrix.arch }}/runner/Release/i2pd"
       - name: Build installer
         env:
           MSYS_NO_PATHCONV: '1'   # Git Bash would turn /DAppVersion=... into a path

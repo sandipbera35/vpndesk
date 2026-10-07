@@ -2,6 +2,7 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 #include <bitsdojo_window_windows/bitsdojo_window_plugin.h>
+#include "webview_cef/webview_cef_plugin_c_api.h"
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -10,6 +11,12 @@ auto bdw = bitsdojo_window_configure(BDW_CUSTOM_FRAME | BDW_HIDE_ON_STARTUP);
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  // OnionDesk Browser (CEF): start the Chromium sub-processes. MUST be the first thing in wWinMain.
+  int exit_code = initCEFProcesses(instance);
+  if (exit_code >= 0) {
+    return exit_code;
+  }
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
@@ -39,6 +46,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   while (::GetMessage(&msg, nullptr, 0, 0)) {
     ::TranslateMessage(&msg);
     ::DispatchMessage(&msg);
+    handleWndProcForCEF(msg.hwnd, msg.message, msg.wParam, msg.lParam);
   }
 
   ::CoUninitialize();

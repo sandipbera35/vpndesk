@@ -76,9 +76,18 @@ Everything lives in `lib/main.dart` (`OnionDeskApp` -> `HomePage` / `_HomePageSt
 - A boot-time systemd unit (brief task 0.7) was NOT added: the safety classifier blocked it as persistence. Needs the user's explicit go-ahead.
 - Benchmarks use their own tor on 127.0.0.1:19050/19051, data in `~/.cache/oniondesk-bench`; never run system-wide tests while a benchmark runs (the nft redirect would capture its traffic).
 
+## I2P tab (2026-10-07, unreleased)
+
+- `lib/i2p.dart` (router lifecycle, console scraping, finder) + `lib/i2p_page.dart` + `lib/launch_via_i2p.dart` (split tunneling); the Tor tab and its code are untouched. Status comes from the i2pd web console (plain HTTP :7070): I2PControl is OFF because i2pd 2.61 on Fedora generated an empty TLS cert for it. Ports 4444 (HTTP proxy), 4447 (SOCKS), 7070 (console); if any is busy we refuse to start ("another router running"). `pkill -x i2pd` does NOT match: the process is named `i2pd-daemon` (use `pgrep -x i2pd-daemon`).
+- i2pd is bundled: Linux = `build_i2pd_linux.sh` (static boost/OpenSSL/zlib, built in CI on ubuntu-22.04 / 22.04-arm, step is `continue-on-error`), Windows/macOS = `fetch_i2pd.sh` (official release, GPG-verified against R4SAS key 9519...CFE2; macOS binary is x86_64, Apple Silicon needs Rosetta). `flutter build linux` wipes `bundle/i2pd/`: rebuild it (podman ubuntu:22.04 with `--security-opt label=disable`) before `package.sh`.
+- Verified live: real i2pd 2.61.0 start/status/stop through the app code, deb/rpm contain it. NOT verified: browsing a .i2p site (fresh addressbook was empty), Windows/macOS bundles (never run), arm64 build.
+- I2P split tunneling forces apps on Linux with `libproxychains4.so` (proxychains-ng 4.17, GPL-2.0, built by `build_proxychains_linux.sh` into `bundle/i2pd/force/`, LD_PRELOAD + generated conf, SOCKS 127.0.0.1:4447, loopback excluded). User decided (2026-10-07): NO system-wide I2P mode. Shim test: `PROXYCHAINS_LIB=... flutter test test/launch_via_i2p_test.dart`.
+- OnionDesk Browser engine = CEF via a PATCHED vendored `third_party/webview_cef` (see ONIONDESK_PATCHES.md: web security back on, proxy switch, background networking off, sandbox on unless the system cannot). History (user flip-flopped 2026-10-07): CEF built -> user said remove Chromium -> pure-Flutter renderer built (backup was only in the scratchpad) -> user said "browser not working, use cef" -> CEF restored. Files: `browser_page.dart` (tabs, full view, start screen, CEF webviews), `browser_mux.dart` (local HTTP proxy: .i2p -> i2pd HTTP proxy 4444 / SOCKS 4447 for CONNECT, rest -> Tor SOCKS, else refuse), `browser_nav.dart`, `browser_sandbox.dart`. Build gotchas: first build downloads ~650 MB CEF and needs several GB in the project dir (`/tmp` is a small tmpfs: never build in the scratchpad); only Debug/Release build types work (no `--profile`; probes use `flutter run --release`); libcef.so must be stripped (1.3 GB -> 250 MB, done in package.sh); Windows arm64 unsupported (CI job removed); stats.i2p-style sites deny browser User-Agents, so .i2p plain pages must go through i2pd's HTTP proxy (it sets MYOB). Licenses: `python3 tool/check_licenses.py` (hosted packages) + CEF LICENSE shipped in `licenses/`.
+- Real-router test: `I2PD_REAL=/path/to/i2pd flutter test test/i2p_real_test.dart`.
+
 ## Last git version (always keep current)
 
-- Last published release: **v1.3.0** (2026-10-07; v1.2.0 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.
+- Last published release: **v1.4.0** (2026-10-07; v1.3.0 before it). After every release, update this line and the same line in `/home/sandipbera/opencode/AGENTS.md`. Verify with `gh release list --limit 1` before choosing a version.
 
 ## CI platforms (2026-10-06)
 
@@ -86,3 +95,10 @@ Everything lives in `lib/main.dart` (`OnionDeskApp` -> `HomePage` / `_HomePageSt
 - Windows proxy: prior proxy saved in `<config>/win_proxy_prev.json`, restored on disconnect, and a leftover `socks=127.0.0.1:9050` is cleared at start; no live watchdog on Windows (SIGKILL leaves the proxy until next launch).
 
 - Windows in-app uninstall (v1.1.4; launcher changed in v1.3.0 to a temp `.cmd` that waits for the pid, runs unins000.exe with `/LOG=%TEMP%\oniondesk-uninstall.log`; the PowerShell one did not uninstall for the user; still untested on Windows after the change): `UninstallPlan.detectWindows` + `launchWindowsUninstaller` (PowerShell waits for the app pid, then runs Inno `unins000.exe /VERYSILENT`); installer `[Code]` kills only its own tor and clears a leftover `socks=127.0.0.1:9050` proxy. Unit-tested and CI-built; never run on real Windows by me (user tested v1.1.3 on Windows x64, worked).
+
+## Session notes (2026-10-07, v1.4.0)
+
+- Close cleanup: `lib/process_guard.dart` (detached `sh` watcher stops i2pd when the app pid vanishes; `findOrphansByDatadir` reaps leftovers on start). Verified Linux SIGKILL/SIGTERM; the Windows PowerShell guard is unverified.
+- Browser: slim strips (30/34/30 px), "Opening <site>" overlay, light theme re-applies `kLightFilter` over the CEF page (`_trueColors`; the filter is an involution). Plugin patch 6 (`WebViewState.dispose`) fixes dead input and a stale "Home" tooltip after opening a site in another tab.
+- About page: `_grid` builds equal-height rows (IntrinsicHeight); About text is not translated (plain `Text`). `test/about_layout_test.dart` guards overflow at 1000/700/480 px.
+- Rebuild recipe: `flutter build linux --release && ./bundle_tor.sh && cp -r .pkg/root/opt/oniondesk/i2pd build/linux/x64/release/bundle/` (the build wipes `bundle/i2pd/`); bundle_tor.sh needs network (dist.torproject.org) and its failure is hidden by `| tail`.

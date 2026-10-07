@@ -4,14 +4,18 @@ import 'package:flutter/material.dart';
 
 const _teal = Color(0xFF2DE2C4), _violet = Color(0xFF7C9CFF);
 
+/// Ring colours: the Tor orb uses teal + violet; the I2P orb passes greens.
+const kRingTealViolet = [_teal, _violet];
+
 /// A progress ring around the status orb while Tor builds its circuit, with a short burst when it completes.
 /// The spinning ticker runs only while connecting and the burst only once, so an idle or connected window costs nothing.
 class ConnectRing extends StatefulWidget {
-  const ConnectRing({super.key, required this.connecting, required this.running, required this.progress, required this.child, this.size = 64});
+  const ConnectRing({super.key, required this.connecting, required this.running, required this.progress, required this.child, this.size = 64, this.colors = kRingTealViolet});
   final bool connecting, running;
   final double progress; // 0..1 (Tor's "Bootstrapped N%")
   final Widget child; // the orb in the middle
   final double size;
+  final List<Color> colors; // [main, accent]
   @override
   State<ConnectRing> createState() => _ConnectRingState();
 }
@@ -64,7 +68,7 @@ class _ConnectRingState extends State<ConnectRing> with TickerProviderStateMixin
                 builder: (_, p, _) => AnimatedBuilder(
                   animation: Listenable.merge([_spin, _burst]),
                   builder: (_, _) => CustomPaint(
-                    painter: _RingPainter(progress: p, spin: widget.connecting ? _spin.value : 0, burst: bursting ? _burst.value : 0, connecting: widget.connecting),
+                    painter: _RingPainter(progress: p, spin: widget.connecting ? _spin.value : 0, burst: bursting ? _burst.value : 0, connecting: widget.connecting, colors: widget.colors),
                   ),
                 ),
               ),
@@ -77,9 +81,10 @@ class _ConnectRingState extends State<ConnectRing> with TickerProviderStateMixin
 }
 
 class _RingPainter extends CustomPainter {
-  _RingPainter({required this.progress, required this.spin, required this.burst, required this.connecting});
+  _RingPainter({required this.progress, required this.spin, required this.burst, required this.connecting, required this.colors});
   final double progress, spin, burst;
   final bool connecting;
+  final List<Color> colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -93,9 +98,9 @@ class _RingPainter extends CustomPainter {
 
     final sweep = 2 * math.pi * progress;
     if (sweep > 0.01) {
-      final shader = SweepGradient(startAngle: 0, endAngle: 2 * math.pi, colors: const [_teal, _violet, _teal], transform: const GradientRotation(start)).createShader(rect);
+      final shader = SweepGradient(startAngle: 0, endAngle: 2 * math.pi, colors: [colors[0], colors[1], colors[0]], transform: const GradientRotation(start)).createShader(rect);
       // glow under the arc, then the arc itself
-      canvas.drawArc(rect, start, sweep, false, Paint()..shader = shader..style = PaintingStyle.stroke..strokeWidth = 7..strokeCap = StrokeCap.round..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5)..color = _teal.withValues(alpha: 0.5));
+      canvas.drawArc(rect, start, sweep, false, Paint()..shader = shader..style = PaintingStyle.stroke..strokeWidth = 7..strokeCap = StrokeCap.round..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5)..color = colors[0].withValues(alpha: 0.5));
       canvas.drawArc(rect, start, sweep, false, Paint()..shader = shader..style = PaintingStyle.stroke..strokeWidth = 3.5..strokeCap = StrokeCap.round);
       // bright head
       final a = start + sweep;
@@ -114,18 +119,19 @@ class _RingPainter extends CustomPainter {
   }
 
   void _paintBurst(Canvas canvas, Offset c, double r) {
+    final c0 = colors[0], c1 = colors[1];
     final e = Curves.easeOutCubic.transform(burst);
     final fade = (1 - burst).clamp(0.0, 1.0);
     // soft flash
-    canvas.drawCircle(c, r + 4, Paint()..color = _teal.withValues(alpha: 0.22 * fade)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
+    canvas.drawCircle(c, r + 4, Paint()..color = c0.withValues(alpha: 0.22 * fade)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
     // expanding shock ring
-    canvas.drawCircle(c, r + 26 * e, Paint()..color = _teal.withValues(alpha: 0.85 * fade)..style = PaintingStyle.stroke..strokeWidth = 3.2 * fade + 0.4);
+    canvas.drawCircle(c, r + 26 * e, Paint()..color = c0.withValues(alpha: 0.85 * fade)..style = PaintingStyle.stroke..strokeWidth = 3.2 * fade + 0.4);
     // sparks flying outwards
     for (var i = 0; i < 14; i++) {
       final ang = i * 2 * math.pi / 14 + 0.3;
       final d = r + 4 + (10 + (i.isEven ? 22 : 14)) * e;
       final p = c + Offset(math.cos(ang), math.sin(ang)) * d;
-      canvas.drawCircle(p, (i.isEven ? 2.6 : 1.8) * fade + 0.2, Paint()..color = (i % 3 == 0 ? _violet : _teal).withValues(alpha: fade));
+      canvas.drawCircle(p, (i.isEven ? 2.6 : 1.8) * fade + 0.2, Paint()..color = (i % 3 == 0 ? c1 : c0).withValues(alpha: fade));
     }
     // a check mark drawing itself, then fading
     final t = (burst / 0.45).clamp(0.0, 1.0);
@@ -143,5 +149,5 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter o) => o.progress != progress || o.spin != spin || o.burst != burst || o.connecting != connecting;
+  bool shouldRepaint(_RingPainter o) => o.progress != progress || o.spin != spin || o.burst != burst || o.connecting != connecting || o.colors != colors;
 }

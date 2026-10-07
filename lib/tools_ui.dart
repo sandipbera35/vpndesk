@@ -204,12 +204,14 @@ class _ExcludeDialogState extends State<_ExcludeDialog> {
 }
 
 /// Ask which program to run through OnionDesk. Returns the command line, or null if cancelled.
-Future<String?> showLaunchDialog(BuildContext context, {required List<String> recents, required List<String> found, List<AppEntry> apps = const []}) =>
-    showDialog<String>(context: context, builder: (_) => _LaunchDialog(recents: recents, found: found, apps: apps));
+/// The texts default to the Tor wording; the I2P tab passes its own.
+Future<String?> showLaunchDialog(BuildContext context, {required List<String> recents, required List<String> found, List<AppEntry> apps = const [], String? title, String? blurb, String? note, String? action}) =>
+    showDialog<String>(context: context, builder: (_) => _LaunchDialog(recents: recents, found: found, apps: apps, title: title, blurb: blurb, note: note, action: action));
 
 class _LaunchDialog extends StatefulWidget {
-  const _LaunchDialog({required this.recents, required this.found, required this.apps});
+  const _LaunchDialog({required this.recents, required this.found, required this.apps, this.title, this.blurb, this.note, this.action});
   final List<String> recents, found;
+  final String? title, blurb, note, action;
   final List<AppEntry> apps;
   @override
   State<_LaunchDialog> createState() => _LaunchDialogState();
@@ -223,12 +225,12 @@ class _LaunchDialogState extends State<_LaunchDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
         backgroundColor: const Color(0xFF111B2E),
-        title: const Text('Run an app through OnionDesk'),
+        title: Text(widget.title ?? 'Run an app through OnionDesk'),
         content: SizedBox(
           width: 460,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Starts the program with OnionDesk\'s proxy (127.0.0.1:9050) set, so only that app goes through Tor. '
-                'Browsers get their own private profile with remote DNS and WebRTC off.', style: TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.35)),
+            Text(widget.blurb ?? ('Starts the program with OnionDesk\'s proxy (127.0.0.1:9050) set, so only that app goes through Tor. '
+                'Browsers get their own private profile with remote DNS and WebRTC off.'), style: TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.35)),
             const SizedBox(height: 10),
             if (widget.found.isNotEmpty) Wrap(spacing: 6, children: [for (final f in widget.found) ActionChip(label: Text(f), onPressed: () => setState(() => _c.text = f))]),
             const SizedBox(height: 8),
@@ -260,12 +262,12 @@ class _LaunchDialogState extends State<_LaunchDialog> {
               Wrap(spacing: 6, runSpacing: 4, children: [for (final r in widget.recents) ActionChip(label: Text(r, overflow: TextOverflow.ellipsis), onPressed: () => setState(() => _c.text = r))]),
             ],
             const SizedBox(height: 10),
-            const Text('Apps that ignore proxy settings are not covered (install torsocks, or use System-wide mode).', style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.35)),
+            Text(widget.note ?? 'Apps that ignore proxy settings are not covered (install torsocks, or use System-wide mode).', style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.35)),
           ]),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(_c.text), child: const Text('Run')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(_c.text), child: Text(widget.action ?? 'Run')),
         ],
       );
 }

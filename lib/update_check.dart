@@ -1,7 +1,7 @@
 // Update notice: compares this build with the latest GitHub release. Pure helpers; the HTTP call lives in main.dart.
 
 /// Keep equal to `version:` in pubspec.yaml (a test enforces it, so a release cannot forget).
-const kAppVersion = '1.3.0';
+const kAppVersion = '1.4.0';
 
 const kReleasesApi = 'https://api.github.com/repos/sandipbera35/vpndesk/releases/latest';
 

@@ -50,3 +50,9 @@ app.*.map.json
 
 # local benchmark telemetry (control-port event logs)
 /docs/bench/telemetry-*.jsonl
+
+# webview_cef (CEF binaries are downloaded by the build)
+third_party/webview_cef/third/cef/
+third_party/webview_cef/linux/prebuilt.zip
+third_party/webview_cef/windows/prebuilt*
+third_party/webview_cef/macos/third/
