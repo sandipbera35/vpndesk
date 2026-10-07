@@ -102,3 +102,9 @@ Everything lives in `lib/main.dart` (`OnionDeskApp` -> `HomePage` / `_HomePageSt
 - Browser: slim strips (30/34/30 px), "Opening <site>" overlay, light theme re-applies `kLightFilter` over the CEF page (`_trueColors`; the filter is an involution). Plugin patch 6 (`WebViewState.dispose`) fixes dead input and a stale "Home" tooltip after opening a site in another tab.
 - About page: `_grid` builds equal-height rows (IntrinsicHeight); About text is not translated (plain `Text`). `test/about_layout_test.dart` guards overflow at 1000/700/480 px.
 - Rebuild recipe: `flutter build linux --release && ./bundle_tor.sh && cp -r .pkg/root/opt/oniondesk/i2pd build/linux/x64/release/bundle/` (the build wipes `bundle/i2pd/`); bundle_tor.sh needs network (dist.torproject.org) and its failure is hidden by `| tail`.
+
+## v1.4.0 release outcome (2026-10-07)
+
+- Published with Linux deb/rpm/tar.gz (x64+arm64) and Windows x64 setup.exe. **macOS DMGs are NOT in v1.4.0**: `flutter build macos` fails at link with `clang: error: no such file or directory: 'Embedded'` / `'Framework'` (an unquoted `-framework Chromium Embedded Framework`, a space in the CEF framework name; cause not found yet, cannot reproduce without a Mac). Earlier macOS fixes already in: helper and pod built with NDEBUG (wrapper is Release). Next step: find the flag (Pods xcconfig / webview_cef.podspec `vendored_frameworks`) and re-attach with `workflow_dispatch tag=v1.4.0`.
+- Linux CI needs clang 18 (apt.llvm.org) because CEF 149 headers need C++20 implicit typename; Windows needs `_CRT_SECURE_NO_WARNINGS` for the plugin. Tag v1.4.0 was moved twice while fixing CI (the first time before any release existed; the second time the release already had Linux/Windows assets, which are byte-for-byte the same code).
+- The `repo` (apt/dnf) job still fails: no GPG secrets (harmless).
