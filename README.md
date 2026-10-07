@@ -2,7 +2,7 @@
 
 # 🛡️ OnionDesk
 
-**A free, open-source Tor client with a live circuit visualizer: pick an exit country, watch your path on the map and browse anonymously. No account, no subscription.**
+**A free, open-source Tor client with a live circuit visualizer: pick an exit country, watch your path on the map and browse through Tor. No account, no subscription.**
 
 A modern desktop app that starts a bundled [Tor](https://www.torproject.org) client with a **strict exit in the country you choose**, shows your real and exit locations on a live map, ranks countries by **live speed estimates**, and can optionally route **every app on your computer** through Tor.
 
@@ -10,9 +10,8 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 [![License](https://img.shields.io/badge/license-Apache--2.0-7C9CFF)](LICENSE)
 ![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B?logo=flutter&logoColor=white)
 ![Platform](https://img.shields.io/badge/Linux-x64%20%7C%20arm64-FFC857?logo=linux&logoColor=black)
-![Tor](https://img.shields.io/badge/powered%20by-Tor-7D4698?logo=torproject&logoColor=white)
 
-[Download](https://github.com/sandipbera35/vpndesk/releases) · [Features](#-features) · [How it works](#-how-it-works) · [System-wide mode](#-system-wide-mode-linux) · [Build from source](#-build-from-source) · [FAQ](#-faq--limitations)
+[Download](https://github.com/sandipbera35/vpndesk/releases) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [Legal notices](#-legal-notices) · [Features](#-features) · [How it works](#-how-it-works) · [System-wide mode](#-system-wide-mode-linux) · [Build from source](#-build-from-source) · [FAQ](#-faq--limitations)
 
 </div>
 
@@ -25,12 +24,12 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 | 🌍 **Country exits** | Choose from 178 countries (the ~50 that currently have Tor exit relays are selectable; the rest are dimmed). Tor is configured with `ExitNodes` pinned to the fastest relay there and `StrictNodes 1`, so you never silently fall back to another country. |
 | ⚡ **Live speed estimates** | Every minute the app measures real round-trip time to relays in each country, caps it by relay bandwidth, and calibrates against speeds you have actually measured through Tor. The sidebar shows `~Mbps · ms` per country, always up to date. |
 | 🤖 **Auto (fastest) mode** | One click and OnionDesk always uses the highest-speed location, switching only when another is **≥ 25 % faster** and at most every **5 minutes**, so it never flaps. |
-| 🔁 **Leak-free location switching** | Changing country edits the live Tor config instead of restarting it, then closes the old circuits (through Tor's loopback-only, cookie-protected control port) so open browser connections move to the new exit too. The proxy never drops, so your real IP is not exposed mid-switch. |
+| 🔁 **Location switching without dropping the proxy** | Changing country edits the live Tor config instead of restarting it, then closes the old circuits (through Tor's loopback-only, cookie-protected control port) so open browser connections move to the new exit too. The proxy is designed to stay up during a switch, so your real IP is not meant to be exposed mid-switch. |
 | 🗺️ **Live world map** | Highlights the selected country and pins your **real IP** and **exit IP** at their locations with animated pins, ripples and a flowing link between them. Works fully offline (bundled Natural Earth data). |
-| 🛡️ **System-wide mode** *(optional, Linux)* | Redirects **all** TCP and DNS from **every app** into Tor with an `nftables` transparent proxy, on GNOME, KDE or any desktop. Asks for administrator permission once, in the app. |
+| 🛡️ **System-wide mode** *(optional, Linux)* | Designed to redirect **all** TCP and DNS from **every app** into Tor with an `nftables` transparent proxy, on GNOME, KDE or any desktop. Asks for administrator permission once, in the app. |
 | 📦 **Nothing else to install** | Tor is bundled inside every package. Install the app and it works. |
 | 🎨 **Polished, responsive UI** | Glass-style dark interface that adapts from a small window to a large one, with no scroll bars, mac-style window controls and an animated About page. |
-| 🆕 **New identity & auto-rotate** | One click (or every 5–60 minutes) switches to a different relay in the same country and moves your open browser connections to it. The proxy never drops, so nothing goes direct. |
+| 🆕 **New identity & auto-rotate** | One click (or every 5–60 minutes) switches to a different relay in the same country and moves your open browser connections to it. The proxy is designed to stay up, so nothing is meant to go direct. |
 | 🧪 **Built-in leak test** | Checks that sites see a Tor exit and not your real IP, that names are resolved inside Tor, and whether apps that ignore the proxy are covered. WebRTC needs a browser setting (the app tells you which). |
 | 🚫 **Exclude countries** | Never exit from countries you choose (presets: Five/Nine/Fourteen Eyes). Auto skips them and they cannot be selected. |
 | 🧭 **Circuit visualizer** | Draws the guard → middle → exit path on the map and lists your active circuits (relay countries, and which sites ride each one; click one to highlight it). Everything comes from Tor's own control port, so it works offline and where Tor Project web services are blocked. Zoom with the wheel or +/− and drag to pan to follow the route. Countries only, never a street address. |
@@ -43,7 +42,7 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 | 🧹 **Clean exit** | Closing OnionDesk (even a hard kill) stops everything it started: Tor, i2pd and the browser helpers. A small detached guard reaps an orphaned `i2pd` on the next start. |
 | 🔔 **Update notice** | Checks GitHub releases (can be turned off in More). Nothing is installed automatically. |
 | 🌐 **6 languages** | English, हिन्दी, বাংলা, Español, العربية (right-to-left), Русский. First-draft translations; corrections welcome. |
-| 🔒 **No accounts, no telemetry** | The app only talks to the Tor network, the Tor Project relay directory, IP-lookup and speed-test services. |
+| 🔒 **No accounts, no telemetry** | No accounts, analytics or tracking, and no server run by the author. The app does contact third parties (IP-lookup and geolocation services, the Tor relay directory, speed test, GitHub for the update notice, I2P servers when I2P is on): [PRIVACY.md](PRIVACY.md) lists each one and what it can see, including that your **real IP is looked up directly while you are not connected**. |
 
 ---
 
@@ -126,7 +125,7 @@ flowchart LR
 3. **Start Tor.** It writes a `torrc` that pins that exit with `StrictNodes 1` and launches the bundled `tor`. Tor builds a three-hop circuit: *guard → middle → exit*. If you close the app, Tor exits with it (`__OwningControllerProcess`).
 4. **Route your traffic.** Tor opens a local **SOCKS5** proxy on `127.0.0.1:9050`. The app also points your desktop's system proxy at it (GNOME) so proxy-aware apps use it automatically. In [system-wide mode](#-system-wide-mode-linux) a firewall rule covers every app.
 5. **Verify.** The exit IP is looked up *through Tor* and shown beside your real IP, with both pinned on the map.
-6. **Stay fast.** Estimates refresh every minute; with Auto on, the app moves to a clearly faster location without ever dropping the proxy.
+6. **Stay fast.** Estimates refresh every minute; with Auto on, the app moves to a clearly faster location while keeping the proxy up.
 7. **Disconnect.** Tor stops and your proxy / firewall settings are restored.
 
 ### Speed estimation
@@ -149,11 +148,11 @@ Turn it on with the **System-wide** switch in the main card. The app explains th
 | What it does | How |
 |---|---|
 | Sends **all TCP** to Tor | `nftables` NAT rule redirects outgoing TCP to Tor's `TransPort` (9040) |
-| Sends **all DNS** to Tor | UDP port 53 redirected to Tor's `DNSPort` (5353): no DNS leaks |
+| Sends **all DNS** to Tor | UDP port 53 redirected to Tor's `DNSPort` (5353), so DNS lookups are meant to stay inside Tor |
 | Keeps Tor itself reachable | Tor runs as a dedicated `oniondesk` system user that is excluded from the redirect |
-| Blocks what Tor can't carry | Other UDP (QUIC/HTTP3, games, VoIP) and **IPv6** are dropped, so nothing leaks around Tor |
+| Blocks what Tor can't carry | Other UDP (QUIC/HTTP3, games, VoIP) and **IPv6** are dropped, so they are not sent around Tor |
 | Leaves your LAN alone | `192.168.x.x`, `10.x.x.x`, `172.16/12`, link-local and DHCP stay direct |
-| **Fail-closed** | If Tor crashes, traffic stays **blocked** and a red **Restore** banner appears; nothing leaks. Closing the app or pressing Disconnect restores normal networking automatically |
+| **Fail-closed by design** | If Tor crashes, traffic stays **blocked** and a red **Restore** banner appears, so traffic is not sent around Tor. Closing the app or pressing Disconnect restores normal networking automatically |
 
 It works the same on GNOME, KDE and any other Linux desktop because it uses the firewall, not a desktop-specific proxy setting.
 
@@ -284,7 +283,13 @@ Pushing a tag such as `v1.0.0` runs the GitHub Actions workflow, which builds th
 ## ❓ FAQ & limitations
 
 **Is this a real VPN?**
-Not by default. It is a Tor-based proxy with country-pinned exits. With **System-wide mode** on Linux it routes the whole machine, which behaves like a VPN for TCP and DNS.
+No. It is a Tor client with a country-pinned exit, not a VPN service: there is no provider, and Tor works differently from a VPN. By default it is a local proxy; with **System-wide mode** on Linux it routes the machine's TCP and DNS through Tor.
+
+**Does it make me anonymous?**
+No tool can promise that. Tor can hide your IP address from the sites you visit, but your behaviour, logins, browser fingerprint, malware and unencrypted traffic can still identify you. For high-risk situations use the Tor Browser from the Tor Project and read its documentation.
+
+**Is it legal?**
+The software is lawful to publish and, in most countries, to use, but some places restrict or ban Tor, I2P, VPNs or encryption tools. You are responsible for following the laws that apply to you. See the legal notices below.
 
 **Why is it slower than a commercial VPN?**
 Traffic goes through three volunteer-run Tor relays, which trades speed for anonymity. The speed numbers shown are estimates until you connect and measure.
@@ -299,9 +304,20 @@ The exit operator can see unencrypted traffic, exactly as with any Tor exit. Pre
 Tor currently has no usable exit relays there. Pick another location.
 
 **Does it collect data?**
-No accounts, no analytics, no telemetry.
+The author collects nothing: no accounts, no analytics, no telemetry, no server. The app itself does contact third-party services (for example IP lookup, which reveals your real IP when you are not connected): see [PRIVACY.md](PRIVACY.md) for the full list.
 
 **Honest status:** Linux x86_64 has been built and exercised end to end, including system-wide mode (verified live on Fedora: traffic goes through Tor, DNS and the LAN behave, QUIC/IPv6 are blocked, and after a hard kill of the helper and Tor the stuck firewall table is removed by `oniondesk-restore --net`). Linux arm64 builds in CI but hasn't been run on hardware; macOS and Windows are scaffolded but untested. Keep `oniondesk-restore` in mind if anything ever misbehaves.
+
+---
+
+## ⚖️ Legal notices
+
+- **Not affiliated.** OnionDesk is an independent project. It is **not** made, endorsed or sponsored by the Tor Project, the I2P / PurpleI2P projects, Google, the Chromium or CEF projects, GitHub, or any distribution. *Tor* and the onion logo are trademarks of The Tor Project, Inc.; *Chromium*, *Flutter*, *Linux*, *GitHub* and other names belong to their owners and are used only to say what the software works with. OnionDesk's name and icon are its own.
+- **No warranty, no guarantee.** The software is provided "as is" under the [Apache License 2.0](LICENSE) (sections 7 and 8): no warranty of any kind, and no liability for damages. It does not guarantee anonymity, privacy, security, speed, availability or that a particular exit country, website or service will work. Tor and I2P are volunteer networks and exit operators can see unencrypted traffic.
+- **Beta features.** The I2P tab, OnionDesk Browser and system-wide mode may contain bugs. They have not been security-audited by a third party.
+- **Lawful use only.** You are responsible for complying with the laws of your country and with the terms of the services you use, including laws on privacy tools, encryption, copyright and computer misuse. Do not use OnionDesk to break the law or harm others. Nothing here is legal advice.
+- **Third-party software.** Licenses and notices for everything bundled (Tor, i2pd, Chromium Embedded Framework, proxychains-ng, Flutter packages ...) are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and in `licenses/` next to the app. Source code for the GPL-licensed proxychains-ng file is linked there; OnionDesk's own source is in this repository.
+- **Privacy and security.** See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
 ---
 

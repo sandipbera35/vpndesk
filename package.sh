@@ -29,6 +29,9 @@ if [ -f "$STAGE/opt/oniondesk/lib/libcef.so" ]; then
   [ -f "$APP/third_party/webview_cef/third/cef/LICENSE.txt" ] && install -m 644 "$APP/third_party/webview_cef/third/cef/LICENSE.txt" "$STAGE/opt/oniondesk/licenses/CEF-LICENSE.txt"
   install -m 644 "$APP/THIRD_PARTY_NOTICES.md" "$STAGE/opt/oniondesk/licenses/THIRD_PARTY_NOTICES.md"
 fi
+# Legal documents travel with every package (license, privacy policy, security policy, third-party notices).
+mkdir -p "$STAGE/opt/oniondesk/licenses"
+for f in LICENSE PRIVACY.md SECURITY.md THIRD_PARTY_NOTICES.md; do install -m 644 "$APP/$f" "$STAGE/opt/oniondesk/licenses/$f"; done
 # The Tor Expert Bundle ships 700/600 files; normal users must be able to read and run everything.
 chmod -R u+rwX,go+rX,go-w "$STAGE/opt/oniondesk"
 # `oniondesk-restore` on PATH: the display-less "no internet after a crash" command
@@ -39,7 +42,7 @@ cat > "$STAGE/usr/share/applications/io.github.sandipbera35.OnionDesk.desktop" <
 Type=Application
 Name=OnionDesk
 GenericName=Tor client and circuit visualizer
-Comment=Browse anonymously through Tor from a country you choose, watch your circuit live, or use I2P
+Comment=Browse through Tor from a country you choose, watch your circuit live, or use I2P
 Exec=/opt/oniondesk/oniondesk
 Icon=oniondesk
 Terminal=false
@@ -80,9 +83,9 @@ Homepage: https://github.com/sandipbera35/vpndesk
 Description: Modern Tor client with a live circuit visualizer, country exits and a private browser
  OnionDesk is a free, open-source Tor client with a live circuit visualizer
  (guard, middle and exit drawn on a world map). It starts a bundled Tor with a
- strict exit relay in the country you pick (a free VPN alternative for privacy,
- anonymity and censorship circumvention), shows your real and exit locations
- and ranks countries by live speed estimates. An optional system-wide mode
+ strict exit relay in the country you pick (a Tor-based tool, not a VPN
+ service, for privacy and censorship circumvention), shows your real and exit
+ locations and ranks countries by live speed estimates. An optional system-wide mode
  routes all TCP and DNS traffic through Tor.
  .
  It also has an I2P tab (beta, bundled i2pd router, per-app split tunneling)
@@ -90,8 +93,10 @@ Description: Modern Tor client with a live circuit visualizer, country exits and
  the web only through Tor and .i2p sites only through I2P. Bridges (obfs4,
  Snowflake, meek), a leak test and an ad blocker are included.
  .
- Testers welcome: please report bugs, ideas and how it runs on your
- distribution at https://github.com/sandipbera35/vpndesk/issues
+ Not affiliated with the Tor Project. No guarantee of anonymity; see the
+ privacy policy and legal notices in the project README. Testers welcome:
+ please report bugs, ideas and how it runs on your distribution at
+ https://github.com/sandipbera35/vpndesk/issues
 EOF
 mkdir -p "$DIST"
 dpkg-deb --root-owner-group --build "$STAGE" "$DIST/oniondesk_${VERSION}_${DEBARCH}.deb" 2>/dev/null || \
@@ -121,8 +126,8 @@ Source0: oniondesk-${VERSION}-bundle.tar.gz
 
 %description
 OnionDesk is a free, open-source Tor client with a live circuit visualizer (guard, middle and exit on a
-world map). It starts a bundled Tor with a strict exit relay in the country you pick (a free VPN
-alternative for privacy, anonymity and censorship circumvention), shows your real and exit locations and
+world map). It starts a bundled Tor with a strict exit relay in the country you pick (a Tor-based tool,
+not a VPN service, for privacy and censorship circumvention), shows your real and exit locations and
 ranks countries by live speed estimates. An optional system-wide mode routes all TCP and DNS traffic
 through Tor.
 
@@ -130,7 +135,8 @@ It also has an I2P tab (beta, bundled i2pd, per-app split tunneling) and OnionDe
 private browser inside the app that reaches the web only through Tor and .i2p sites only through I2P.
 Bridges (obfs4, Snowflake, meek), a leak test and an ad blocker are included.
 
-Testers welcome: please report bugs, ideas and how it runs on your distribution at
+Not affiliated with the Tor Project. No guarantee of anonymity; see the privacy policy and legal notices in the
+project README. Testers welcome: please report bugs, ideas and how it runs on your distribution at
 https://github.com/sandipbera35/vpndesk/issues
 
 %install

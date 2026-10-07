@@ -1207,7 +1207,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             'When you connect, OnionDesk will ask for your administrator password once, then send all TCP traffic and DNS from every app through Tor, on any desktop (GNOME, KDE, …).\n\n'
             '• Tor cannot carry UDP, so QUIC/HTTP3, games and voice calls are blocked while connected (browsers fall back to HTTPS).\n'
             '• IPv6 is blocked; local-network addresses (192.168.x.x etc.) stay direct.\n'
-            '• If Tor crashes, traffic stays blocked until you press Restore, so nothing leaks.\n'
+            '• If Tor crashes, traffic stays blocked until you press Restore, so it is not sent around Tor.\n'
             '• Disconnecting or closing the app restores normal networking.',
             style: TextStyle(height: 1.45, color: Colors.white70),
           ),

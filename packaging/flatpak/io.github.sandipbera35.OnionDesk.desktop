@@ -2,7 +2,7 @@
 Type=Application
 Name=OnionDesk
 GenericName=Tor client and circuit visualizer
-Comment=Browse anonymously through Tor from a country you choose, watch your circuit live, or use I2P
+Comment=Browse through Tor from a country you choose, watch your circuit live, or use I2P
 Exec=oniondesk
 Icon=io.github.sandipbera35.OnionDesk
 Terminal=false

@@ -16,10 +16,10 @@
     </p>
     <ul>
       <li>Choose a country exit, or turn on Auto to always use the fastest location</li>
-      <li>Switch location without ever exposing your real IP address</li>
+      <li>Switch location while the proxy stays up (designed so your real IP is not exposed during the change)</li>
       <li>Live world map with animated pins for your real and exit IP</li>
       <li>Optional system-wide mode that sends all TCP and DNS traffic from every app through Tor (asks for administrator permission once)</li>
-      <li>Crash-safe: your normal network settings are always restored, even if the app is killed</li>
+      <li>Crash-safety by design: your normal network settings are restored automatically on the next start, or with the oniondesk-restore command, if the app is killed</li>
       <li>I2P tab (beta) with a bundled i2pd router and per-app split tunneling, for .i2p sites</li>
       <li>OnionDesk Browser (beta): tabs and full view inside the app, using Tor for the web and I2P for .i2p, with no direct connection</li>
       <li>Leak test, circuit visualizer, bridges (obfs4, Snowflake, meek), ad blocker, new identity and auto-rotate</li>
@@ -27,7 +27,9 @@
     </ul>
     <p>
       By default it is a local SOCKS5 proxy, so only apps that honour the system proxy are covered. Tor is slower
-      than a commercial VPN and cannot carry UDP traffic. OnionDesk is not affiliated with the Tor Project.
+      than a commercial VPN and cannot carry UDP traffic. OnionDesk is not affiliated with the Tor Project, I2P or Google. It is not a VPN service and does not guarantee anonymity;
+      your behaviour and unencrypted traffic can still identify you. It does not collect data, but it contacts third-party
+      services (for example to look up your IP address); see the privacy policy. You are responsible for following the laws that apply to you.
     </p>
     <p>
       Testers welcome: please try it on your distribution and report what works and what does not (bugs, ideas, your

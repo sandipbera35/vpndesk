@@ -1,5 +1,5 @@
 pkgbase = oniondesk-bin
-	pkgdesc = Free Tor VPN alternative: pick your exit country, live map, optional system-wide mode
+	pkgdesc = Tor client with a live circuit visualizer: pick your exit country, optional system-wide mode
 	pkgver = 1.0.7
 	pkgrel = 1
 	url = https://github.com/sandipbera35/vpndesk

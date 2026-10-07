@@ -49,3 +49,14 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Trademarks and independence
+OnionDesk is an independent project and is not affiliated with, endorsed or sponsored by the Tor Project, PurpleI2P / the I2P project,
+Google, the Chromium or CEF projects, GitHub, Cloudflare or any other party named here. "Tor" and the onion logo are trademarks of
+The Tor Project, Inc.; "Chromium" and "Google" are trademarks of Google LLC; "Linux", "Flutter", "GitHub" and other names belong to their
+owners. They are used only to describe what OnionDesk works with. OnionDesk does not use the Tor logo.
+
+## Source code offer
+OnionDesk's own source code is at https://github.com/sandipbera35/vpndesk. For the GPL-licensed proxychains-ng library shipped in
+`i2pd/force/` the corresponding source is the unmodified upstream tarball linked above together with `build_proxychains_linux.sh` from this
+repository; on request (sandipbera35@outlook.com) a copy will be provided for at least three years from the release date.

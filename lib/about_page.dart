@@ -112,6 +112,8 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                       const SizedBox(height: 18),
                       _stagger(5, _section('Good to know', Icons.info_outline_rounded, _amber, _notes())),
                       const SizedBox(height: 18),
+                      _stagger(6, _section('Legal & privacy', Icons.gavel_rounded, _red, _legal())),
+                      const SizedBox(height: 18),
                       _stagger(6, _aiNote()),
                     ]),
                   ),
@@ -266,7 +268,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
       ('Route traffic', 'Tor opens a SOCKS5 proxy on 127.0.0.1:9050 and the app points your system proxy at it, so apps that honour the proxy leave from the exit relay\'s country. With the optional System-wide mode (Linux), an nftables rule also redirects every app\'s TCP and DNS into Tor after one administrator prompt.'),
       ('Verify', 'The exit IP is looked up through Tor and both your real and exit IPs are pinned on the map. The card values refresh automatically.'),
       ('Live speed estimates', 'Every minute the app measures real round-trip time to relays in each country, caps it by relay bandwidth, and calibrates against speeds you have actually measured.'),
-      ('Switch without leaks', 'Changing country edits the torrc and reloads Tor while the proxy stays on, so traffic waits for a new circuit instead of going direct.'),
+      ('Switch while connected', 'Changing country edits the torrc and reloads Tor while the proxy stays on, so traffic is meant to wait for a new circuit instead of going direct.'),
       ('Disconnect', 'Stopping the app ends tor and restores your proxy settings.'),
     ];
     return Column(children: [
@@ -358,7 +360,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                 'Ranks countries by speed: your own measured speed through Tor when you have one, otherwise a live estimate from round-trip time and relay bandwidth, refreshed every minute.',
                 'Disconnected: the fastest country is pre-selected, and Connect uses it.',
                 'Connected: it switches only if another location is at least 25% faster, and at most once every 5 minutes, so it does not bounce around.',
-                'Switching never drops Tor or the proxy, so your real IP is not exposed while it changes.',
+                'Switching is designed to keep Tor and the proxy up, so your real IP is not meant to be exposed while it changes.',
               ],
           ),
           _ModeCard(
@@ -371,7 +373,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                 'Asks for your administrator password once when you connect, then adds nftables rules that redirect all TCP and DNS into Tor.',
                 'Tor itself runs as a separate "oniondesk" user so its own traffic is not redirected.',
                 'UDP (QUIC/HTTP3, games, voice calls) and IPv6 are blocked, because Tor cannot carry them. Local-network addresses stay direct.',
-                'Disconnecting or closing the app restores normal networking. If Tor crashes, traffic stays blocked until you press Restore, so nothing leaks.',
+                'Disconnecting or closing the app restores normal networking. If Tor crashes, traffic stays blocked until you press Restore, so it is not sent around Tor.',
                 'Off: only apps that use the system proxy (SOCKS5 127.0.0.1:9050) go through Tor.',
               ],
           ),
@@ -383,7 +385,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
               points: [
                 'Press New identity (beside the Ad blocker chip) to switch to a different relay in your chosen country. Open browser connections are moved too, so sites really see the new IP.',
                 'Auto-rotate (Settings) does the same every 5, 10, 30 or 60 minutes.',
-                'The country stays pinned (StrictNodes), so nothing can go direct while it changes. Tor limits this to about once every 10 seconds.',
+                'The country stays pinned (StrictNodes) and the proxy stays up, so nothing is meant to go direct while it changes. Tor limits this to about once every 10 seconds.',
               ],
           ),
           _ModeCard(
@@ -412,7 +414,7 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
               icon: Icons.shield_outlined,
               color: _teal,
               title: 'Leak test',
-              tagline: 'Check that nothing leaks.',
+              tagline: 'Check for common leaks.',
               points: [
                 'Settings → Tools → Leak test (while connected) checks that sites see a Tor exit and not your real IP, that names are resolved inside Tor, and whether apps that ignore the proxy are covered.',
                 'WebRTC cannot be tested from a desktop app; the result tells you which browser setting to change.',
@@ -498,12 +500,25 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
         ]),
       );
 
+  Widget _legal() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const _Bullet('OnionDesk is an independent project, not made, endorsed or sponsored by the Tor Project, the I2P projects, Google or the Chromium project. Tor and the onion logo are trademarks of The Tor Project, Inc.; other names belong to their owners.'),
+        const _Bullet('Provided "as is" under the Apache License 2.0: no warranty and no liability. It does not guarantee anonymity, security, speed or availability. Beta features (I2P, OnionDesk Browser, system-wide mode) may contain bugs and have not been independently audited.'),
+        const _Bullet('Use it lawfully. Some countries restrict privacy and circumvention tools; you are responsible for following the laws that apply to you and the terms of the services you use. This is not legal advice.'),
+        const SizedBox(height: 4),
+        Wrap(spacing: 10, runSpacing: 10, children: const [
+          _LinkChip(icon: Icons.privacy_tip_outlined, label: 'Privacy policy', url: 'https://github.com/sandipbera35/vpndesk/blob/main/PRIVACY.md', color: _teal),
+          _LinkChip(icon: Icons.security_rounded, label: 'Security policy', url: 'https://github.com/sandipbera35/vpndesk/blob/main/SECURITY.md', color: _amber),
+          _LinkChip(icon: Icons.description_outlined, label: 'License (Apache-2.0)', url: 'https://github.com/sandipbera35/vpndesk/blob/main/LICENSE', color: _violet),
+          _LinkChip(icon: Icons.inventory_2_outlined, label: 'Third-party notices', url: 'https://github.com/sandipbera35/vpndesk/blob/main/THIRD_PARTY_NOTICES.md', color: Colors.white),
+        ]),
+      ]);
+
   Widget _notes() => const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _Bullet('By default this is a local SOCKS5 proxy via Tor: apps that ignore the system proxy are not covered. Turn on System-wide mode (Linux) to cover every app; UDP such as QUIC and voice calls is then blocked, because Tor cannot carry it.'),
-        _Bullet('Tor trades speed for anonymity, so expect lower speeds than a commercial VPN. Speeds shown are estimates until you connect.'),
+        _Bullet('Tor trades speed for privacy, so expect lower speeds than a commercial VPN. OnionDesk does not guarantee anonymity. Speeds shown are estimates until you connect.'),
         _Bullet('I2P and OnionDesk Browser are BETA. I2P is a small, slow network of its own, and the browser has no direct connection: it works only while Tor and/or I2P is connected.'),
-        _Bullet('Exit relays are run by volunteers; the exit operator can see unencrypted traffic, so prefer HTTPS.'),
-        _Bullet('The app talks to the Tor network, the Tor Project relay directory, I2P reseed and address-book servers (when I2P is on), IP-lookup and speed-test services, and GitHub (update notice, and the optional ad list). It has no accounts and no telemetry; the update check can be turned off in Settings.'),
+        _Bullet('Exit relays are run by volunteers; the exit operator can see unencrypted traffic, so prefer HTTPS. When you are not connected, your real IP is looked up directly by third-party services (see the privacy policy).'),
+        _Bullet('The app talks to the Tor network, the Tor Project relay directory, I2P reseed and address-book servers (when I2P is on), IP-lookup and speed-test services, and GitHub (update notice, and the optional ad list). The author collects nothing (no accounts, no telemetry), but the app does contact third-party services such as IP lookup; see the privacy policy. The update check can be turned off in Settings.'),
       ]);
 }
 
