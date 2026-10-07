@@ -54,15 +54,15 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 ```bash
 # Debian / Ubuntu / Mint
 curl -fsSL https://sandipbera35.github.io/vpndesk/oniondesk.gpg | sudo tee /usr/share/keyrings/oniondesk.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/oniondesk.gpg] https://sandipbera35.github.io/vpndesk/apt stable main" | sudo tee /etc/apt/sources.list.d/oniondesk.list
+echo "deb [signed-by=/usr/share/keyrings/oniondesk.gpg] https://github.com/sandipbera35/vpndesk/releases/download/apt ./" | sudo tee /etc/apt/sources.list.d/oniondesk.list
 sudo apt update && sudo apt install oniondesk
 
 # Fedora / RHEL / openSUSE
 sudo curl -fsSL -o /etc/yum.repos.d/oniondesk.repo https://sandipbera35.github.io/vpndesk/oniondesk.repo
 sudo dnf install oniondesk
 
-# Arch / Manjaro (AUR)
-yay -S oniondesk-bin
+# Arch / Manjaro (AUR: submission pending, use the package below until then)
+# yay -S oniondesk-bin
 ```
 
 Package names are lowercase (`oniondesk`). After the one-time repository setup, `sudo apt install oniondesk` / `sudo dnf install oniondesk` work directly.

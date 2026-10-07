@@ -90,7 +90,19 @@ jobs:
       - name: Build repositories
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: packaging/repo/build-repos.sh
+      - name: Publish apt repo and signed rpms to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          # packages are over Pages' 100 MB file limit, so they live on releases: apt flat repo in the "apt" release,
+          # the signed rpms replace the unsigned ones on the version's release (the dnf metadata records their checksums)
+          gh release view apt >/dev/null 2>&1 || gh release create apt --target "$GITHUB_SHA" --prerelease --title "APT repository (used by apt, not a download)" --notes "Flat apt repository for OnionDesk. Do not download from here; see https://sandipbera35.github.io/vpndesk/"
+          gh release upload apt aptflat/* --clobber
+          for old in $(gh release view apt --json assets -q '.assets[].name'); do [ -e "aptflat/$old" ] || gh release delete-asset apt "$old" --yes; done
+          gh release upload "$TAG" signed-rpm/* --clobber
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
