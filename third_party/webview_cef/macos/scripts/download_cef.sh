@@ -208,7 +208,9 @@ arch_flags=()
 for arch in "${ARCHS[@]}"; do
   arch_flags+=(-arch "${arch}")
 done
-clang++ -std=c++20 -stdlib=libc++ -mmacosx-version-min=12.0 -w \
+# The wrapper is a Release build (NDEBUG): the helper must match, or CEF's DCHECK-only declarations stay unresolved at link time.
+ndebug=(); [ "${BUILD_TYPE}" = Release ] && ndebug=(-DNDEBUG)
+clang++ -std=c++20 -stdlib=libc++ -mmacosx-version-min=12.0 -w "${ndebug[@]}" \
   "${arch_flags[@]}" \
   -I "${DEST}" -I "${REPO_ROOT}/common" \
   "${MACOS_DIR}/helper/cef_helper_main.mm" \

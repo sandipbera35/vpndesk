@@ -83,7 +83,7 @@ set_target_properties(${PLUGIN_NAME} PROPERTIES
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 # CEF/Chromium headers use std::min/std::max and numeric_limits::max(), which
 # collide with the min/max macros from <windows.h>. Disable those macros.
-target_compile_definitions(${PLUGIN_NAME} PRIVATE NOMINMAX)
+target_compile_definitions(${PLUGIN_NAME} PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
 
 # Zero-copy GPU rendering: bridge CEF's OnAcceleratedPaint D3D11 shared texture
 # straight to a Flutter GPU surface texture (no CPU swizzle / upload). Turn OFF

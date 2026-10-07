@@ -35,6 +35,14 @@ jobs:
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev rpm libevent-dev libssl-dev zlib1g-dev libboost-program-options-dev dpkg-dev appstream desktop-file-utils imagemagick
+      # CEF 149's headers need C++20 implicit typename, which Ubuntu 22.04's clang 14 rejects: use clang 18 from apt.llvm.org
+      # (still built on 22.04 so the packages keep the old glibc requirement).
+      - name: Install clang 18
+        run: |
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh && chmod +x /tmp/llvm.sh && sudo /tmp/llvm.sh 18
+          sudo apt-get install -y libstdc++-12-dev
+          sudo ln -sf /usr/bin/clang-18 /usr/bin/clang && sudo ln -sf /usr/bin/clang++-18 /usr/bin/clang++
+          clang --version
       - name: Build app
         run: flutter pub get && flutter build linux --release
       - name: Bundle tor
