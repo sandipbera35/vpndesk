@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'legal_page.dart';
 import 'platform.dart';
 import 'top_icons.dart' show DragBar;
 
@@ -505,11 +506,9 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
         const _Bullet('Provided "as is" under the Apache License 2.0: no warranty and no liability. It does not guarantee anonymity, security, speed or availability. Beta features (I2P, OnionDesk Browser, system-wide mode) may contain bugs and have not been independently audited.'),
         const _Bullet('Use it lawfully. Some countries restrict privacy and circumvention tools; you are responsible for following the laws that apply to you and the terms of the services you use. This is not legal advice.'),
         const SizedBox(height: 4),
-        Wrap(spacing: 10, runSpacing: 10, children: const [
-          _LinkChip(icon: Icons.privacy_tip_outlined, label: 'Privacy policy', url: 'https://github.com/sandipbera35/vpndesk/blob/main/PRIVACY.md', color: _teal),
-          _LinkChip(icon: Icons.security_rounded, label: 'Security policy', url: 'https://github.com/sandipbera35/vpndesk/blob/main/SECURITY.md', color: _amber),
-          _LinkChip(icon: Icons.description_outlined, label: 'License (Apache-2.0)', url: 'https://github.com/sandipbera35/vpndesk/blob/main/LICENSE', color: _violet),
-          _LinkChip(icon: Icons.inventory_2_outlined, label: 'Third-party notices', url: 'https://github.com/sandipbera35/vpndesk/blob/main/THIRD_PARTY_NOTICES.md', color: Colors.white),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          for (var i = 0; i < kLegalDocs.length; i++)
+            _PageChip(icon: kLegalDocs[i].icon, label: kLegalDocs[i].title, color: kLegalDocs[i].color, onTap: () => Navigator.of(context).push(legalRoute(widget.windowDots, tab: i))),
         ]),
       ]);
 
@@ -532,6 +531,33 @@ class _Bullet extends StatelessWidget {
           const Padding(padding: EdgeInsets.only(top: 6, right: 12), child: Icon(Icons.circle, size: 6, color: _amber)),
           Expanded(child: Text(text, style: const TextStyle(color: Colors.white60, height: 1.45, fontSize: 13.5))),
         ]),
+      );
+}
+
+/// Like [_LinkChip] but opens a page inside the app.
+class _PageChip extends StatelessWidget {
+  const _PageChip({required this.icon, required this.label, required this.color, required this.onTap});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), color: color.withValues(alpha: 0.08), border: Border.all(color: color.withValues(alpha: 0.35))),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 8),
+              Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: color, fontSize: 13)),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right_rounded, size: 15, color: color.withValues(alpha: 0.7)),
+            ]),
+          ),
+        ),
       );
 }
 

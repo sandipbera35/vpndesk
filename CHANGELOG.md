@@ -5,6 +5,7 @@
 
 ## Unreleased
 
+- **Privacy & legal inside the app:** About > Legal & privacy and Settings > Privacy & legal open a reader with the Privacy policy, Legal notices (terms of use), Security policy and Licenses, loaded from the same files as the repository (`PRIVACY.md`, `LEGAL.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `LICENSE`), so they work offline and cannot drift. English only. New `LEGAL.md`.
 - **Legal and privacy pass:** new `PRIVACY.md` (every outside service the app contacts and what it can see, what is stored locally) and `SECURITY.md` (reporting, limits of the protection); About page has a Legal & privacy section; README has legal notices (no affiliation, no warranty or anonymity guarantee, lawful use, trademarks) and no longer shows the "powered by Tor" badge (it used the Tor logo); absolute claims ("nothing leaks", "never drops", "always restored") were rewritten as design intent; package texts say it is not a VPN service. The system-wide confirmation dialog lost its non-English translation (its English text changed).
 
 ## 1.4.0 (2026-10-07)

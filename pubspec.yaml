@@ -67,6 +67,12 @@ flutter:
     - assets/world.json
     - assets/icon.png
     - assets/blocklist.txt
+    # Legal texts shown in the app (the same files live in the repository root)
+    - LEGAL.md
+    - PRIVACY.md
+    - SECURITY.md
+    - THIRD_PARTY_NOTICES.md
+    - LICENSE
 
   # To add assets to your application, add an assets section, like this:
   # assets:

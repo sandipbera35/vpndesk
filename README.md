@@ -11,7 +11,7 @@ A modern desktop app that starts a bundled [Tor](https://www.torproject.org) cli
 ![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B?logo=flutter&logoColor=white)
 ![Platform](https://img.shields.io/badge/Linux-x64%20%7C%20arm64-FFC857?logo=linux&logoColor=black)
 
-[Download](https://github.com/sandipbera35/vpndesk/releases) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [Legal notices](#-legal-notices) · [Features](#-features) · [How it works](#-how-it-works) · [System-wide mode](#-system-wide-mode-linux) · [Build from source](#-build-from-source) · [FAQ](#-faq--limitations)
+[Download](https://github.com/sandipbera35/vpndesk/releases) · [Legal](LEGAL.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [Legal notices](#-legal-notices) · [Features](#-features) · [How it works](#-how-it-works) · [System-wide mode](#-system-wide-mode-linux) · [Build from source](#-build-from-source) · [FAQ](#-faq--limitations)
 
 </div>
 
@@ -317,7 +317,7 @@ The author collects nothing: no accounts, no analytics, no telemetry, no server.
 - **Beta features.** The I2P tab, OnionDesk Browser and system-wide mode may contain bugs. They have not been security-audited by a third party.
 - **Lawful use only.** You are responsible for complying with the laws of your country and with the terms of the services you use, including laws on privacy tools, encryption, copyright and computer misuse. Do not use OnionDesk to break the law or harm others. Nothing here is legal advice.
 - **Third-party software.** Licenses and notices for everything bundled (Tor, i2pd, Chromium Embedded Framework, proxychains-ng, Flutter packages ...) are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and in `licenses/` next to the app. Source code for the GPL-licensed proxychains-ng file is linked there; OnionDesk's own source is in this repository.
-- **Privacy and security.** See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+- **Full texts.** [LEGAL.md](LEGAL.md) (legal notices and terms of use), [PRIVACY.md](PRIVACY.md) (privacy policy) and [SECURITY.md](SECURITY.md). The same documents are inside the app: **About → Legal & privacy**, or **Settings → Privacy & legal**.
 
 ---
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/material.dart' as m show Text;
 import 'l10n.dart';
+import 'legal_page.dart';
 import 'top_icons.dart' show DragBar;
 import 'update_check.dart' show kAppVersion;
 
@@ -158,6 +159,12 @@ class SettingsPage extends StatelessWidget {
                               trailing: actions.adListBusy()
                                   ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: _teal))
                                   : (actions.adListInstalled() ? _button('Remove', actions.removeAdList) : _button('Download', actions.downloadAdList))),
+                        ]),
+                        const SizedBox(height: 16),
+                        _card('Privacy & legal', Icons.gavel_rounded, _violet, [
+                          for (var i = 0; i < kLegalDocs.length; i++)
+                            _row(kLegalDocs[i].icon, kLegalDocs[i].title, const ['What the app sends and stores, and who can see it', 'Not affiliated, no warranty, lawful use, trademarks', 'Reporting a vulnerability, and the limits of the protection', 'Third-party licenses and the Apache-2.0 license'][i],
+                                trailing: _button('Read', () => Navigator.of(context).push(legalRoute(windowDots, tab: i)))),
                         ]),
                         if (actions.onUninstall != null) ...[
                           const SizedBox(height: 16),
