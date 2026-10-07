@@ -64,11 +64,35 @@ bool isSafeWinDataPath(String path, String appData) {
 }
 
 /// Run Inno Setup's uninstaller silently once this app's process has exited (it cannot remove a running exe).
+///
+/// A temp .cmd does the waiting (no PowerShell: a hidden, detached one was dying with this app so nothing got
+/// uninstalled). It runs from %TEMP%, never from the install folder (a cwd inside it would block its removal),
+/// and logs to `%TEMP%\oniondesk-uninstall.log` so a failure leaves evidence.
 Future<void> launchWindowsUninstaller(String uninstaller) async {
-  final q = uninstaller.replaceAll("'", "''");
+  final tmp = Platform.environment['TEMP'] ?? Platform.environment['TMP'] ?? Directory.systemTemp.path;
+  final script = '$tmp\\oniondesk-uninstall.cmd';
+  final log = '$tmp\\oniondesk-uninstall.log';
+  File(script).writeAsStringSync([
+    '@echo off',
+    'set N=0',
+    ':wait',
+    'tasklist /FI "PID eq $pid" 2>nul | find "$pid" >nul',
+    'if not errorlevel 1 (',
+    '  set /a N+=1',
+    '  if %N% GEQ 30 goto run',
+    '  ping -n 2 127.0.0.1 >nul',
+    '  goto wait',
+    ')',
+    ':run',
+    'ping -n 2 127.0.0.1 >nul',
+    '"$uninstaller" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$log"',
+    '(goto) 2>nul & del "%~f0"',
+    '',
+  ].join('\r\n'));
   await Process.start(
-    'powershell',
-    ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', "Wait-Process -Id $pid -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process -FilePath '$q' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'"],
+    'cmd.exe',
+    ['/c', 'start', 'oniondesk-uninstall', '/min', 'cmd.exe', '/c', script],
+    workingDirectory: tmp,
     mode: ProcessStartMode.detached,
   );
 }

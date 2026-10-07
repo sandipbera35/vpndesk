@@ -5,10 +5,10 @@ import 'top_icons.dart' show DragBar;
 const _teal = Color(0xFF2DE2C4), _amber = Color(0xFFFFC857), _violet = Color(0xFF7C9CFF);
 
 /// Slide + fade + slight scale route for the About page.
-Route<void> aboutRoute(Widget windowDots, {VoidCallback? onUninstall}) => PageRouteBuilder<void>(
+Route<void> aboutRoute(Widget windowDots, {Map<String, String> buildInfo = const {}}) => PageRouteBuilder<void>(
       transitionDuration: const Duration(milliseconds: 520),
       reverseTransitionDuration: const Duration(milliseconds: 320),
-      pageBuilder: (_, _, _) => AboutPage(windowDots: windowDots, onUninstall: onUninstall),
+      pageBuilder: (_, _, _) => AboutPage(windowDots: windowDots, buildInfo: buildInfo),
       transitionsBuilder: (_, anim, _, child) {
         final c = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeIn);
         return FadeTransition(
@@ -22,11 +22,12 @@ Route<void> aboutRoute(Widget windowDots, {VoidCallback? onUninstall}) => PageRo
     );
 
 class AboutPage extends StatefulWidget {
-  const AboutPage({super.key, required this.windowDots, this.onUninstall});
+  const AboutPage({super.key, required this.windowDots, this.buildInfo = const {}});
   final Widget windowDots;
 
-  /// Null where uninstalling from the app is not supported (only Linux for now): the card is hidden.
-  final VoidCallback? onUninstall;
+  /// Label -> value rows for "This build" (app version, Tor version, bridge mode).
+  final Map<String, String> buildInfo;
+
   @override
   State<AboutPage> createState() => _AboutPageState();
 }
@@ -88,6 +89,16 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                     child: ListView(padding: const EdgeInsets.fromLTRB(24, 8, 24, 32), children: [
                       _stagger(0, _header()),
                       const SizedBox(height: 18),
+                      if (widget.buildInfo.isNotEmpty) ...[
+                        _stagger(1, _glass(Wrap(spacing: 28, runSpacing: 8, children: [
+                          for (final e in widget.buildInfo.entries)
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              Text('${e.key}: ', style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                              SelectableText(e.value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                            ]),
+                        ]))),
+                        const SizedBox(height: 18),
+                      ],
                       _stagger(1, _authorCard()),
                       const SizedBox(height: 18),
                       _stagger(2, _section('How it works', Icons.account_tree_rounded, _teal, _howItWorks())),
@@ -99,10 +110,6 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
                       _stagger(5, _section('Good to know', Icons.info_outline_rounded, _amber, _notes())),
                       const SizedBox(height: 18),
                       _stagger(6, _aiNote()),
-                      if (widget.onUninstall != null) ...[
-                        const SizedBox(height: 18),
-                        _stagger(7, _uninstallCard()),
-                      ],
                     ]),
                   ),
                 ),
@@ -152,41 +159,32 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
 
   Widget _authorCard() => _glass(
         glow: _teal,
-        Wrap(spacing: 22, runSpacing: 18, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          AnimatedBuilder(
-            animation: _glow,
-            builder: (_, _) => Container(
-              width: 96, height: 96,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(colors: [Color(0xFF7C5CFF), _teal]),
-                boxShadow: [BoxShadow(color: _teal.withValues(alpha: 0.2 + 0.25 * _glow.value), blurRadius: 18 + 14 * _glow.value)],
-              ),
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/profile.jpg',
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.high,
-                  errorBuilder: (_, _, _) => Container(
-                    color: const Color(0xFF0E1830),
-                    alignment: Alignment.center,
-                    child: const Text('SB', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white)),
-                  ),
-                ),
-              ),
-            ),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('CREATED BY', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1.6, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text('Sandip Bera', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text('AI-Enabled Full-Stack Engineer  |  Backend Specialist', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: _teal, height: 1.4)),
+          const SizedBox(height: 8),
+          const Text(
+            '4+ years in Golang and Node.js, building microservices and distributed systems on PostgreSQL, shipped with Docker and cloud tooling. '
+            'Works with AI-assisted development tools: Claude Code and Google Antigravity.',
+            style: TextStyle(color: Colors.white70, height: 1.5, fontSize: 13.5),
           ),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            const Text('CREATED BY', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1.6, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text('Sandip Bera', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 12),
-            Wrap(spacing: 10, runSpacing: 10, children: const [
-              _LinkChip(icon: Icons.code_rounded, label: 'GitHub', url: 'https://github.com/sandipbera35', color: Colors.white),
-              _LinkChip(icon: Icons.language_rounded, label: 'sandipbera.in', url: 'https://sandipbera.in', color: _teal),
-              _LinkChip(icon: Icons.work_rounded, label: 'LinkedIn', url: 'https://www.linkedin.com/in/sandipbera', color: _violet),
-            ]),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final t in const ['Golang', 'Node.js', 'Microservices', 'Distributed Systems', 'PostgreSQL', 'Docker & Cloud', 'Claude Code', 'Google Antigravity'])
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: Colors.white.withValues(alpha: 0.06), border: Border.all(color: Colors.white.withValues(alpha: 0.1))),
+                child: Text(t, style: const TextStyle(fontSize: 11.5, color: Colors.white70)),
+              ),
+          ]),
+          const SizedBox(height: 14),
+          Wrap(spacing: 10, runSpacing: 10, children: const [
+            _LinkChip(icon: Icons.code_rounded, label: 'GitHub', url: 'https://github.com/sandipbera35', color: Colors.white),
+            _LinkChip(icon: Icons.language_rounded, label: 'sandipbera.in', url: 'https://sandipbera.in', color: _teal),
+            _LinkChip(icon: Icons.work_rounded, label: 'LinkedIn', url: 'https://www.linkedin.com/in/sandipbera', color: _violet),
           ]),
         ]),
       );
@@ -410,32 +408,6 @@ class _AboutPageState extends State<AboutPage> with TickerProviderStateMixin {
       ]);
     });
   }
-
-  Widget _uninstallCard() => _glass(
-        glow: const Color(0xFFFF6B6B),
-        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: const Color(0xFFFF6B6B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(11)),
-            child: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFFF6B6B)),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Uninstall OnionDesk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              SizedBox(height: 6),
-              Text('Removes the app, its system helper and (if you choose) your settings from this computer. You will be asked to confirm.',
-                  style: TextStyle(color: Colors.white60, height: 1.45, fontSize: 13.5)),
-            ]),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton(
-            onPressed: widget.onUninstall,
-            style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFF6B6B), side: BorderSide(color: const Color(0xFFFF6B6B).withValues(alpha: 0.6))),
-            child: const Text('Uninstall…'),
-          ),
-        ]),
-      );
 
   Widget _aiNote() => _glass(
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -6,8 +6,9 @@ import 'dart:ui' show AppExitResponse, FontFeature;
 import 'package:flutter/material.dart' hide Text;
 import 'l10n.dart';
 import 'package:flutter/material.dart' as m show Text;
-import 'package:flutter/services.dart' show LogicalKeyboardKey, rootBundle;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, LogicalKeyboardKey, rootBundle;
 import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:socks5_proxy/socks_client.dart';
 import 'about_page.dart';
 import 'autostart.dart';
@@ -16,6 +17,7 @@ import 'bridges.dart';
 import 'connect_ring.dart';
 import 'blocklist_update.dart';
 import 'estimator.dart';
+import 'extras.dart';
 import 'launch_via_tor.dart';
 import 'installed_apps.dart';
 import 'leak_test.dart';
@@ -159,7 +161,13 @@ class OnionDeskApp extends StatelessWidget {
           valueListenable: L10n.lang,
           builder: (_, code, _) => Directionality(
             textDirection: kRtl.contains(code) ? TextDirection.rtl : TextDirection.ltr,
-            child: ClipRRect(borderRadius: BorderRadius.circular(18), child: child),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: lightTheme,
+              builder: (_, light, _) => ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: light ? ColorFiltered(colorFilter: kLightFilter, child: child) : child,
+              ),
+            ),
           ),
         ),
         home: const HomePage(),
@@ -201,6 +209,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     super.initState();
     L10n.set(L10n.systemLanguage()); // first run: the OS language; a saved choice overrides it below
     _loadSettings();
+    lightTheme.value = _themeMode == 'light';
+    _loadTorVersion();
     L10n.lang.addListener(_onLang);
     Autostart().isEnabled().then((v) { if (mounted) setState(() => _startAtLogin = v); });
     // Undo what a previous run that was killed left behind *before* any network lookups.
@@ -230,6 +240,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _statsTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       _loadCountryStats();
       if (running && !_loadingSpeed) _loadSpeed();
+      _pollTraffic();
       if (_realLL == null && _ipRe.hasMatch(realIp)) _loadRealGeo(realIp);
     });
     _realTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (!running && !connecting) _loadRealIp(); });
@@ -338,6 +349,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Future<void> _teardown() => _teardownRun ??= _doTeardown().whenComplete(() => _teardownRun = null);
 
   Future<void> _doTeardown() async {
+    _userStopped = true; // a deliberate disconnect / quit: no "disconnected" notification
     if (!Plat.frozen) _saveSettings(); // remembers the window size
     var clean = true;
     final tor = _tor;
@@ -645,6 +657,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _customBridges = m['customBridges'] as String? ?? '';
       L10n.set(m['lang'] is String ? m['lang'] as String : L10n.systemLanguage());
       _recentApps = [for (final r in (m['recentApps'] as List? ?? const [])) if (r is String) r];
+      _applyPortable(m);
+      final lc = m['lastConnected'];
+      if (lc is String && countries.containsKey(lc)) _lastConnected = lc;
       final last = m['country'];
       if (last is String && countries.containsKey(last)) selectedCountry = last; // last used location
     } catch (_) {}
@@ -654,6 +669,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   /// be set again next launch. Written to a temp file and renamed, so a crash can never leave half a file.
   void _saveSettings() {
     _settingsTick.value++;
+    lightTheme.value = _themeMode == 'light';
     try {
       Size? win;
       try { win = appWindow.size; } catch (_) {} // no window in tests/probes
@@ -662,10 +678,117 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         'excluded': _excluded.toList()..sort(), 'checkUpdates': _checkUpdates, 'dismissedUpdate': _dismissedUpdate,
         'connectOnLaunch': _connectOnLaunch, 'bridgeMode': _bridgeMode.name, 'customBridges': _customBridges,
         'lang': L10n.lang.value, 'recentApps': _recentApps, 'country': selectedCountry, 'mapMax': _mapMax,
+        'favorites': _favorites.toList()..sort(), 'notifications': _notifications, 'themeMode': _themeMode, 'lastConnected': _lastConnected,
         if (win != null && win.width >= 640 && win.height >= 560) ...{'winW': win.width.round(), 'winH': win.height.round()},
       });
       final tmp = File('${_settingsFile.path}.tmp')..writeAsStringSync(data);
       tmp.renameSync(_settingsFile.path);
+    } catch (_) {}
+  }
+
+  // ---- Small features: favorites, copy, notifications, session counters, settings export/import, theme ----
+  void _applyPortable(Map m) {
+    _favorites = {for (final c in (m['favorites'] as List? ?? const [])) if (c is String && countries.containsKey(c)) c};
+    _notifications = m['notifications'] != false;
+    _themeMode = m['themeMode'] == 'light' ? 'light' : 'dark';
+  }
+
+  void _toggleFavorite(String cc) {
+    setState(() { if (!_favorites.remove(cc)) _favorites.add(cc); });
+    _saveSettings();
+  }
+
+  Future<void> _copy(String text, {String? what}) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.hideCurrentSnackBar();
+    m?.showSnackBar(SnackBar(duration: const Duration(milliseconds: 1400), behavior: SnackBarBehavior.floating, width: 240, content: Text(what == null ? 'Copied' : 'Copied $what')));
+  }
+
+  void _notify(String title, String body) {
+    if (_notifications) notifyDesktop(L10n.tr(title), L10n.tr(body));
+  }
+
+  /// While connected: elapsed time is derived from [_connectedAt]; bytes come from tor's control port (once a minute).
+  Future<void> _pollTraffic() async {
+    if (!running || _tor == null) return;
+    final r = await Plat.controlQuery(['GETINFO traffic/read', 'GETINFO traffic/written'], password: _ctlPassArg, dataDir: _ctlDataDir);
+    if (r == null || !mounted || !running) return;
+    final i = parseTraffic(r, 'read'), o = parseTraffic(r, 'written');
+    if (i != null && o != null) setState(() { _bytesIn = i; _bytesOut = o; });
+  }
+
+  /// Called from build: detects connect / disconnect edges without touching every place `running` is set.
+  void _syncSession() {
+    if (running && !_wasRunning) {
+      _wasRunning = true;
+      _connectedAt = DateTime.now();
+      _userStopped = false;
+      _bytesIn = _bytesOut = 0;
+      _lastConnected = selectedCountry;
+      Future.microtask(() { _saveSettings(); _pollTraffic(); });
+    } else if (!running && _wasRunning) {
+      _wasRunning = false;
+      _connectedAt = null;
+      _bytesIn = _bytesOut = 0;
+      if (!_userStopped) _notify('OnionDesk disconnected', 'The Tor connection ended. Your traffic is no longer protected.');
+      _userStopped = false;
+    }
+  }
+
+  bool _userStopped = false; // set by _stop so a deliberate disconnect does not notify
+
+  static const _jsonType = XTypeGroup(label: 'JSON', extensions: ['json'], mimeTypes: ['application/json'], uniformTypeIdentifiers: ['public.json']);
+
+  /// Asks where to save, then writes the portable settings (never bridge lines) as JSON. Returns the path,
+  /// null if the user cancelled, or a message starting with "!" on failure.
+  Future<String?> _exportSettings() async {
+    try {
+      final loc = await getSaveLocation(suggestedName: 'oniondesk-settings.json', acceptedTypeGroups: const [_jsonType], confirmButtonText: 'Export');
+      if (loc == null) return null;
+      var path = loc.path;
+      if (!path.toLowerCase().endsWith('.json')) path = '$path.json';
+      final all = jsonDecode(_settingsFile.readAsStringSync()) as Map;
+      File(path).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(exportSettings(all)));
+      return path;
+    } catch (e) {
+      return '!Could not write the file: $e';
+    }
+  }
+
+  /// Asks for a JSON file, keeps only known keys of the right type, and applies them. Null = cancelled,
+  /// "" = success, otherwise why it failed.
+  Future<String?> _importSettings() async {
+    if (running || connecting) return 'Disconnect first, then import.';
+    try {
+      final f = await openFile(acceptedTypeGroups: const [_jsonType], confirmButtonText: 'Import');
+      if (f == null) return null;
+      if (await f.length() > 256 * 1024) return 'That file is too large to be a settings file.';
+      final clean = sanitizeImport(jsonDecode(await f.readAsString()));
+      if (clean.isEmpty) return 'Nothing valid in that file.';
+      final cur = _settingsFile.existsSync() ? Map<String, dynamic>.from(jsonDecode(_settingsFile.readAsStringSync()) as Map) : <String, dynamic>{};
+      cur.addAll(clean);
+      _settingsFile.writeAsStringSync(jsonEncode(cur));
+      if (!mounted) return '';
+      setState(() {
+        _loadSettings();
+        _countryCtrl?.text = countries[selectedCountry]!;
+      });
+      _saveSettings();
+      return '';
+    } on FormatException {
+      return 'That is not a valid JSON file.';
+    } catch (e) {
+      return 'Could not import: $e';
+    }
+  }
+
+  Future<void> _loadTorVersion() async {
+    try {
+      final r = await Process.run(Plat.torExecutable(), ['--version'], environment: Plat.torEnv());
+      final m = RegExp(r'Tor version ([0-9][^\s]*?)\.?(?:\s|$)').firstMatch('${r.stdout}');
+      if (m != null && mounted) setState(() => _torVersion = m.group(1)!);
     } catch (_) {}
   }
 
@@ -692,6 +815,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   String _activeBridges = ''; // torrc lines of the connection being started
   List<String> _recentApps = [];
   bool _startAtLogin = false;
+  Set<String> _favorites = {};
+  bool _notifications = true;
+  String _themeMode = 'dark'; // dark | light
+  String? _lastConnected; // country of the last successful connection (Quick connect)
+  DateTime? _connectedAt;
+  int _bytesIn = 0, _bytesOut = 0;
+  String _torVersion = '';
+  FocusNode? _countryFocus; // the Autocomplete's own node, captured in _countryField
+  bool _wasRunning = false;
   List<({String cc, String nick})> _hops = [];
   final Map<String, String> _relayCc = {}; // relay fingerprint -> country
 
@@ -700,13 +832,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   /// A fresh relay in the same country: tor is told to use new circuits and the old ones are closed, so open browser
   /// connections move too. The country stays pinned (StrictNodes), so nothing can go direct in between.
-  Future<void> _newIdentityTap() async {
+  Future<void> _newIdentityTap({bool auto = false}) async {
     if (!running || _switching || _identityBusy) return;
     final last = _lastIdentity;
     if (last != null && DateTime.now().difference(last) < const Duration(seconds: 10)) return; // tor rate-limits NEWNYM
     setState(() => _identityBusy = true);
     try {
       await _switchLive(selectedCountry, fresh: true);
+      _notify('New identity', auto ? 'Auto-rotate moved you to a new relay in ${countries[selectedCountry]}.' : 'You now have a new relay in ${countries[selectedCountry]}.');
     } finally {
       if (mounted) setState(() => _identityBusy = false);
     }
@@ -722,7 +855,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     if (!running) { _lastIdentity = null; return; }
     _lastIdentity ??= DateTime.now();
     if (_rotateMin > 0 && !_switching && !_identityBusy && DateTime.now().difference(_lastIdentity!) >= _rotateEvery) {
-      _newIdentityTap();
+      _newIdentityTap(auto: true);
     }
   }
 
@@ -1138,6 +1271,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _lastAutoSwitch = DateTime.now();
     setState(() => log += 'Auto-fastest: switching to ${countries[best]} (~${_speedOf(best).toStringAsFixed(1)} Mbps)\n');
     await _selectCountry(best);
+    _notify('Auto-fastest switched', 'Now exiting in ${countries[best]}.');
   }
 
   File get _measuredFile => File('${_cfgDir.path}/measured.json');
@@ -1330,6 +1464,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final list = countries.keys.toList()
       ..sort((a, b) {
         double v(String c) => _noExits.contains(c) || _excluded.contains(c) ? -2 : (_measured[c] ?? _estMbps[c] ?? -1);
+        final fa = _favorites.contains(a) ? 1 : 0, fb = _favorites.contains(b) ? 1 : 0;
+        if (fa != fb) return fb - fa; // favorites first, then by speed
         return v(b).compareTo(v(a));
       });
     return Container(
@@ -1368,6 +1504,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               measured: _measured.containsKey(list[i]),
               unavailable: _noExits.contains(list[i]) || _excluded.contains(list[i]),
               code: list[i].toUpperCase(),
+              favorite: _favorites.contains(list[i]),
+              onStar: () => _toggleFavorite(list[i]),
               selected: list[i] == selectedCountry,
               active: list[i] == selectedCountry && running,
               onTap: () => _selectCountry(list[i]),
@@ -1639,7 +1777,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Widget _statCard(String title, String value, IconData icon, Color accent,
-      {String? sub, VoidCallback? onRefresh, bool loading = false, bool compact = false}) {
+      {String? sub, VoidCallback? onRefresh, bool loading = false, bool compact = false, String? copy}) {
     final (main, detail) = _split(value);
     final caption = sub ?? detail;
     return Expanded(
@@ -1659,6 +1797,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
             ),
+            if (copy != null)
+              Tooltip(
+                message: L10n.tr('Copy'),
+                child: InkResponse(onTap: () => _copy(copy, what: title), radius: 16, child: const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Icon(Icons.copy_rounded, size: 14, color: Colors.white38))),
+              ),
             if (onRefresh != null) _RefreshButton(onTap: onRefresh, loading: loading),
           ]),
           SizedBox(height: compact ? 8 : 12),
@@ -1781,6 +1924,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         onSelected: (name) => setState(() => selectedCountry = countries.entries.firstWhere((e) => e.value == name).key),
         fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
           _countryCtrl = ctrl;
+          _countryFocus = focus;
           return TextField(
             controller: ctrl, focusNode: focus,
             // readOnly (not enabled:false) so the Auto chip in the suffix stays tappable.
@@ -1919,6 +2063,50 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
   }
 
+  Widget _chip(IconData icon, Widget label, {VoidCallback? onTap, String? tip, Color color = Colors.white70}) {
+    final body = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: Colors.white.withValues(alpha: 0.06), border: Border.all(color: Colors.white.withValues(alpha: 0.1))),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 13, color: color), const SizedBox(width: 6), DefaultTextStyle.merge(style: TextStyle(fontSize: 11.5, color: color, fontFeatures: const [FontFeature.tabularFigures()]), child: label)]),
+    );
+    final tapped = onTap == null ? body : MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(onTap: onTap, child: body));
+    return tip == null ? tapped : Tooltip(message: tip, child: tapped);
+  }
+
+  /// Connected for H:MM:SS and bytes down / up; the clock ticks inside its own small widget, not the whole page.
+  Widget _sessionChip() => _chip(
+        Icons.timer_outlined,
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (_connectedAt != null) _Elapsed(since: _connectedAt!),
+          if (_bytesIn + _bytesOut > 0) m.Text('  ·  ↓ ${formatBytes(_bytesIn)}  ↑ ${formatBytes(_bytesOut)}'),
+        ]),
+        tip: L10n.tr('Time connected and data through Tor this session'),
+      );
+
+  Widget _socksChip() => _chip(
+        Icons.copy_rounded,
+        const m.Text('127.0.0.1:9050'),
+        onTap: () => _copy('127.0.0.1:9050', what: 'SOCKS5 address'),
+        tip: L10n.tr('Copy the SOCKS5 address. Firefox: Settings > Network > SOCKS Host, tick "Proxy DNS". curl: --socks5-hostname 127.0.0.1:9050'),
+      );
+
+  /// Disconnected, and the last connection was somewhere other than the field: one tap goes back there.
+  Widget? _quickConnectChip() {
+    final lc = _lastConnected;
+    if (running || connecting || lc == null || _autoFastest || _noExits.contains(lc) || _excluded.contains(lc)) return null;
+    return _chip(
+      Icons.history_rounded,
+      Text('Reconnect to ${countries[lc]}'),
+      color: _teal,
+      onTap: () {
+        setState(() => selectedCountry = lc);
+        _countryCtrl?.text = countries[lc]!;
+        _start();
+      },
+      tip: L10n.tr('Connect to the location you used last'),
+    );
+  }
+
   Widget _blockedBanner() => Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: Container(
@@ -1957,7 +2145,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           const SizedBox(height: 2),
           Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13)),
           const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [_systemWidePill(), _adBlockPill(), _newIdentityButton()]),
+          Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [_systemWidePill(), _adBlockPill(), _newIdentityButton(), if (running) ...[_sessionChip(), _socksChip()], ?_quickConnectChip()]),
         ]),
       ),
     ]);
@@ -2036,9 +2224,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _hero(width),
       const SizedBox(height: 14),
       Row(children: [
-        _statCard('Real IP', realIp, Icons.home_rounded, _amber, sub: _realPlace, compact: compact),
+        _statCard('Real IP', realIp, Icons.home_rounded, _amber, sub: _realPlace, compact: compact, copy: _ipRe.hasMatch(realIp) ? realIp : null),
         const SizedBox(width: 12),
-        _statCard('Exit IP', exitIp, Icons.public, _teal, onRefresh: running ? _loadExitIp : null, loading: _loadingExit, sub: running ? (_exitNote ?? _exitPlace) : null, compact: compact),
+        _statCard('Exit IP', exitIp, Icons.public, _teal, onRefresh: running ? _loadExitIp : null, loading: _loadingExit, sub: running ? (_exitNote ?? _exitPlace) : null, compact: compact, copy: running && _ipRe.hasMatch(exitIp.split(' — ').first) ? exitIp.split(' — ').first : null),
         const SizedBox(width: 12),
         _statCard('Speed', speed, Icons.speed, const Color(0xFF7C9CFF), onRefresh: _loadSpeed, loading: _loadingSpeed, sub: speedDetail, compact: compact),
       ]),
@@ -2056,7 +2244,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _aboutButton() => Row(mainAxisSize: MainAxisSize.min, children: [
         SettingsIconButton(onTap: _openSettings),
         const SizedBox(width: 8),
-        AboutIconButton(onTap: () => Navigator.of(context).push(aboutRoute(_windowDots(), onUninstall: (Plat.linux || Plat.win) ? _beginUninstall : null))),
+        AboutIconButton(onTap: () => Navigator.of(context).push(aboutRoute(_windowDots(), buildInfo: {
+          'App': kAppVersion,
+          'Tor': _torVersion.isEmpty ? 'unknown' : _torVersion,
+          'Bridges': _bridgeMode == BridgeMode.none ? 'Off' : (_bridgeMode == BridgeMode.custom ? 'My own bridges' : _bridgeMode.name),
+        }))),
       ]);
 
   void _openSettings() {
@@ -2098,6 +2290,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         running: () => running,
         runLeakTest: () => showLeakTest(context, _leakTest),
         runSplitTunnel: _runApp,
+        notifications: () => _notifications,
+        toggleNotifications: () { setState(() => _notifications = !_notifications); _saveSettings(); },
+        lightTheme: () => _themeMode == 'light',
+        toggleLightTheme: () { setState(() => _themeMode = _themeMode == 'light' ? 'dark' : 'light'); _saveSettings(); },
+        onUninstall: (Plat.linux || Plat.win) ? _beginUninstall : null,
+        exportSettings: _exportSettings,
+        importSettings: _importSettings,
       ),
     ));
   }
@@ -2113,10 +2312,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
         _syncPulse();
+        _syncSession();
         final showSidebar = box.maxWidth >= 860;
         final sideW = (box.maxWidth * 0.28).clamp(250.0, 330.0);
         return CallbackShortcuts(
-          bindings: {const SingleActivator(LogicalKeyboardKey.escape): () { if (_mapMax) _toggleMapMax(); }}, // Esc restores the map
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): () { if (_mapMax) _toggleMapMax(); }, // Esc restores the map
+            for (final ctrl in const [true, false]) ...{
+              SingleActivator(LogicalKeyboardKey.keyK, control: ctrl, meta: !ctrl): () => _countryFocus?.requestFocus(),
+              SingleActivator(LogicalKeyboardKey.enter, control: ctrl, meta: !ctrl): () { if (!connecting) { running ? _stop() : _start(); } },
+              SingleActivator(LogicalKeyboardKey.keyN, control: ctrl, meta: !ctrl): () { if (running) _newIdentityTap(); },
+            },
+          },
           child: Focus(
           autofocus: true,
           child: Scaffold(
@@ -2245,13 +2452,14 @@ class _RefreshButtonState extends State<_RefreshButton> with SingleTickerProvide
 
 /// Animated country button: staggered slide-in, hover lift/glow, selected highlight.
 class _CountryTile extends StatefulWidget {
-  const _CountryTile({super.key, required this.index, required this.code, required this.name, required this.mbps, this.pingMs, required this.measured, required this.unavailable, required this.selected, required this.active, required this.onTap});
+  const _CountryTile({super.key, required this.index, required this.code, required this.name, required this.mbps, this.pingMs, required this.measured, required this.unavailable, required this.selected, required this.active, required this.onTap, this.favorite = false, this.onStar});
   final int index;
   final String code, name;
   final double? mbps;
   final double? pingMs;
-  final bool measured, unavailable, selected, active;
+  final bool measured, unavailable, selected, active, favorite;
   final VoidCallback onTap;
+  final VoidCallback? onStar;
   @override
   State<_CountryTile> createState() => _CountryTileState();
 }
@@ -2324,6 +2532,15 @@ class _CountryTileState extends State<_CountryTile> {
                 child: Text(widget.unavailable ? 'no exits' : (widget.mbps == null ? '—' : '${widget.measured ? '' : '~'}${widget.mbps!.toStringAsFixed(1)} Mbps${widget.pingMs == null ? '' : ' · ${widget.pingMs!.round()} ms'}'),
                     textAlign: TextAlign.right, style: TextStyle(fontSize: 11, color: widget.measured ? const Color(0xFF5EEAD4) : Colors.white70, fontWeight: widget.measured ? FontWeight.bold : FontWeight.normal, fontFamily: 'monospace')),
               ),
+              if (widget.onStar != null && !widget.unavailable && (widget.favorite || _hover || widget.selected))
+                InkResponse(
+                  onTap: widget.onStar,
+                  radius: 14,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(widget.favorite ? Icons.star_rounded : Icons.star_border_rounded, size: 16, color: widget.favorite ? const Color(0xFFFFC857) : Colors.white38),
+                  ),
+                ),
               if (widget.active) ...[
                 const SizedBox(width: 6),
                 const Icon(Icons.check_circle, size: 15, color: Color(0xFF22C55E)),
@@ -2401,4 +2618,30 @@ class CircuitRoute {
   final List<({String cc, String nick})> hops;
   final List<String> targets;
   String get summary => hops.map((h) => h.cc.toUpperCase()).join(' → ');
+}
+
+/// H:MM:SS since [since]. Owns a 1-second ticker so only this label repaints; it exists only while connected.
+class _Elapsed extends StatefulWidget {
+  const _Elapsed({required this.since});
+  final DateTime since;
+  @override
+  State<_Elapsed> createState() => _ElapsedState();
+}
+
+class _ElapsedState extends State<_Elapsed> {
+  Timer? _t;
+  @override
+  void initState() {
+    super.initState();
+    _t = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => m.Text(formatElapsed(DateTime.now().difference(widget.since)));
 }

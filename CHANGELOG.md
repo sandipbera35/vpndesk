@@ -3,6 +3,20 @@
 ## Highlights
 - **Uninstall from the app** (Linux): About > Uninstall. Asks to confirm, then removes the app, its system helper and (optionally) your settings, with an animated progress page. Administrator permission is asked once; cancelling removes nothing. Set `VPNDESK_UNINSTALL_DRYRUN=1` to preview the flow without removing anything.
 
+## 1.3.0 (2026-10-07)
+
+- **Favorites:** star a country to pin it to the top of the list.
+- **Copy buttons** on the Real IP / Exit IP cards and a one-click copy of the SOCKS5 address (`127.0.0.1:9050`, with a Firefox/curl hint).
+- **Keyboard shortcuts:** Ctrl/Cmd+K focus the country search, Ctrl/Cmd+Enter connect or disconnect, Ctrl/Cmd+N new identity.
+- **Reconnect chip:** after disconnecting, one tap returns to the location you used last.
+- **Session chip:** time connected and data down/up through Tor (read from Tor's control port once a minute; the clock repaints only its own label).
+- **Desktop notifications** (on by default, Settings): connection dropped, auto-rotate or Auto-fastest changed your exit. A deliberate disconnect or quit never notifies.
+- **Backup:** export/import settings as a `.json` file you choose in a file dialog. Bridge lines are never exported; an import only applies known options of the right type and is refused while connected.
+- **Uninstall** moved from About to Settings. About no longer shows a profile picture; it has a short professional bio instead.
+- **Windows uninstall fix (untested on Windows):** the in-app uninstaller is now started through a small batch script that waits for the app to exit and logs to `%TEMP%\oniondesk-uninstall.log` (a hidden PowerShell was dying with the app, so nothing was uninstalled).
+- **About:** shows the app version, the bundled Tor version and the bridge mode.
+- **Light theme** (Settings > Light theme, a toggle). It is the dark design run through a colour filter, so every screen follows; it costs a little extra GPU work while it is on.
+
 ## 1.2.0 (2026-10-06)
 
 Every feature below was run end to end on the real app (clean config, real Tor): new identity and auto-rotate (19 exit changes in 4 min with a 15 s test interval, real IP never seen), bridges obfs4/Snowflake/meek/custom (connected; injected torrc lines refused), exclude countries (refused when selected, avoided by Auto), ad blocker (blocked domains refused, normal sites work), split tunneling (launcher and `torsocks` verified against a control).

@@ -38,6 +38,13 @@ class SettingsActions {
     required this.runLeakTest,
     required this.runSplitTunnel,
     required this.languages,
+    required this.notifications,
+    required this.toggleNotifications,
+    required this.lightTheme,
+    required this.toggleLightTheme,
+    this.onUninstall,
+    required this.exportSettings,
+    required this.importSettings,
   });
   final Listenable listenable;
   final String Function() lang;
@@ -50,6 +57,17 @@ class SettingsActions {
   final String Function() bridgeSummary, adListStatus;
   final bool Function() adListBusy, adListInstalled, running;
   final VoidCallback removeAdList, runLeakTest, runSplitTunnel;
+  final bool Function() notifications;
+  final VoidCallback toggleNotifications;
+  final bool Function() lightTheme;
+  final VoidCallback toggleLightTheme;
+
+  /// Null where uninstalling from the app is not supported (macOS): the card is hidden.
+  final VoidCallback? onUninstall;
+
+  /// Both open a file chooser. Export: the saved path, null if cancelled, "!message" on failure.
+  /// Import: null if cancelled, "" on success, otherwise the reason it failed.
+  final Future<String?> Function() exportSettings, importSettings;
 }
 
 Route<void> settingsRoute(Widget windowDots, SettingsActions actions) => PageRouteBuilder<void>(
@@ -105,7 +123,22 @@ class SettingsPage extends StatelessWidget {
                           _switch(Icons.login_rounded, 'Start OnionDesk when I log in', 'Opens minimised. It does not connect unless you also turn on the next option.', actions.startAtLogin(), actions.toggleStartAtLogin),
                           _switch(Icons.bolt_rounded, 'Connect automatically on launch', 'Connects with your last location as soon as the app is up.', actions.connectOnLaunch(), actions.toggleConnectOnLaunch),
                           _switch(Icons.system_update_alt_rounded, 'Check for updates automatically', 'Asks GitHub for the latest release now and then. Nothing is installed automatically.', actions.checkUpdates(), actions.toggleCheckUpdates),
+                          _switch(Icons.notifications_active_outlined, 'Desktop notifications', 'Tell me when the connection drops, or when Auto-fastest / auto-rotate changes my exit.', actions.notifications(), actions.toggleNotifications),
+                          _switch(Icons.light_mode_rounded, 'Light theme', 'Switch the app from the dark look to a light one.', actions.lightTheme(), actions.toggleLightTheme),
                           _row(Icons.refresh_rounded, 'Check for updates now', 'Version $kAppVersion', trailing: _button('Check', actions.checkNow)),
+                        ]),
+                        const SizedBox(height: 16),
+                        _card('Backup', Icons.save_alt_rounded, _violet, [
+                          _row(Icons.upload_file_rounded, 'Export settings', 'Choose where to save a JSON file with your language, favorites, exclusions and toggles. Bridge lines are never exported.', trailing: _button('Export', () async {
+                            final r = await actions.exportSettings();
+                            if (r == null || !context.mounted) return;
+                            _toast(context, r.startsWith('!') ? r.substring(1) : 'Saved to $r');
+                          })),
+                          _row(Icons.download_for_offline_rounded, 'Import settings', 'Choose a JSON file you exported before. Only known options are applied. Disconnect first.', trailing: _button('Import', () async {
+                            final r = await actions.importSettings();
+                            if (r == null || !context.mounted) return;
+                            _toast(context, r.isEmpty ? 'Settings imported.' : r);
+                          })),
                         ]),
                         const SizedBox(height: 16),
                         _card('Connection', Icons.alt_route_rounded, _violet, [
@@ -126,6 +159,17 @@ class SettingsPage extends StatelessWidget {
                                   ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: _teal))
                                   : (actions.adListInstalled() ? _button('Remove', actions.removeAdList) : _button('Download', actions.downloadAdList))),
                         ]),
+                        if (actions.onUninstall != null) ...[
+                          const SizedBox(height: 16),
+                          _card('Uninstall', Icons.delete_outline_rounded, const Color(0xFFFF6B6B), [
+                            _row(Icons.delete_outline_rounded, 'Uninstall OnionDesk', 'Removes the app, its system helper and (if you choose) your settings from this computer. You will be asked to confirm.',
+                                trailing: OutlinedButton(
+                                  onPressed: actions.onUninstall,
+                                  style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFF6B6B), side: BorderSide(color: const Color(0xFFFF6B6B).withValues(alpha: 0.6)), shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 14)),
+                                  child: const Text('Uninstall…'),
+                                )),
+                          ]),
+                        ],
                       ]),
                     ),
                   ),
@@ -185,6 +229,12 @@ class SettingsPage extends StatelessWidget {
         itemBuilder: (_) => [for (final e in actions.languages.entries) CheckedPopupMenuItem(value: e.key, checked: actions.lang() == e.key, child: m.Text(e.value))],
         child: IgnorePointer(child: _button(actions.languages[actions.lang()]!, () {})),
       );
+
+  void _toast(BuildContext context, String msg) {
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.hideCurrentSnackBar();
+    m?.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text(msg)));
+  }
 
   Widget _rotateMenu(BuildContext context) => PopupMenuButton<int>(
         color: const Color(0xFF16233A),
