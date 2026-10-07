@@ -31,7 +31,7 @@ if [ -f "$STAGE/opt/oniondesk/lib/libcef.so" ]; then
 fi
 # Legal documents travel with every package (license, privacy policy, security policy, third-party notices).
 mkdir -p "$STAGE/opt/oniondesk/licenses"
-for f in LICENSE PRIVACY.md SECURITY.md THIRD_PARTY_NOTICES.md; do install -m 644 "$APP/$f" "$STAGE/opt/oniondesk/licenses/$f"; done
+for f in LICENSE LEGAL.md PRIVACY.md SECURITY.md THIRD_PARTY_NOTICES.md; do install -m 644 "$APP/$f" "$STAGE/opt/oniondesk/licenses/$f"; done
 # The Tor Expert Bundle ships 700/600 files; normal users must be able to read and run everything.
 chmod -R u+rwX,go+rX,go-w "$STAGE/opt/oniondesk"
 # `oniondesk-restore` on PATH: the display-less "no internet after a crash" command
